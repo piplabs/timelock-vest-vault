@@ -395,8 +395,9 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         // Multiply by durationAfterCliff before dividing to mitigate precision loss from rounding.
         // unlockedAmount is calculated as:
         // unlockedAmount = ((alloc * 25 * durationAfterCliff) + (alloc * 75 * 30 days * (elapsedAfterCliff / 30 days)))
-        ///   / (durationAfterCliff * 100)
+        //   / (durationAfterCliff * 100)
         // Although the formula can be simplified by factoring out 'alloc', it remains expanded for clarity.
+        // unlockedAmount = alloc * 30 days * (elapsed / 30 days) / unlocking.duration; (if configurable cliff is not considered)
         unlockedAmount =
             ((alloc * unlocking.cliffPercentage * durationAfterCliff) +
                 (alloc * (100 - unlocking.cliffPercentage) * 30 days * (elapsedAfterCliff / 30 days))) /
