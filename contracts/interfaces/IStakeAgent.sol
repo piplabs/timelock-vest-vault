@@ -15,6 +15,8 @@ interface IStakeAgent {
     /// @notice Emitted when the reward receiver address is set
     event RewardReceiverAddressSet(bytes32 indexed beneficiary, address indexed rewardReceiver);
 
+    receive() external payable;
+
     // Functions
     /// @notice Transfers tokens to the vault
     /// @dev the function can only be called by the vault
@@ -23,11 +25,11 @@ interface IStakeAgent {
 
     /// @notice set the unstake receiver address in IPStaking contract
     /// @dev the function can only be called by the vault
-    function setUnstakeReceiverAddress(address unstakeReceiver) external;
+    function setUnstakeReceiverAddress(address unstakeReceiver) external payable;
 
     /// @notice set the reward receiver address in IPStaking contract
     /// @dev the function can only be called by the vault
-    function setRewardReceiverAddress(address rewardReceiver) external;
+    function setRewardReceiverAddress(address rewardReceiver) external payable;
 
     /// @notice return the beneficiary address (hashed) associated with this StakeAgent
     /// @return The beneficiary address
@@ -40,7 +42,7 @@ interface IStakeAgent {
     /// @notice set the operator address of this StakeAgent in IPStaking contract
     /// @dev the function can only be called by the vault
     /// @param _operator The address of the operator
-    function setOperator(address _operator) external;
+    function setOperator(address _operator) external payable;
 
     /// @notice return the staking contract associated with this StakeAgent
     /// @return The staking contract address

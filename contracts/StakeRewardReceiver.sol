@@ -8,8 +8,8 @@ import { IIPTokenStaking } from "./interfaces/IIPTokenStaking.sol";
 
 error CallerIsNotVault();
 
- /// @title StakeRewardReceiver
- /// @notice Receives and tracks staking rewards for a beneficiary.
+/// @title StakeRewardReceiver
+/// @notice Receives and tracks staking rewards for a beneficiary.
 contract StakeRewardReceiver is IStakeRewardReceiver {
     bytes32 private immutable BENEFICIARY;
     address private immutable VAULT;
@@ -25,6 +25,8 @@ contract StakeRewardReceiver is IStakeRewardReceiver {
         VAULT = _vault;
         STAKING_CONTRACT = IIPTokenStaking(_stakingContract);
     }
+
+    receive() external payable {}
 
     /// @notice Transfers reward tokens to given address
     /// @dev the function can only be called by the vault
@@ -43,5 +45,4 @@ contract StakeRewardReceiver is IStakeRewardReceiver {
     function getVault() external view override returns (address) {
         return VAULT;
     }
-
 }

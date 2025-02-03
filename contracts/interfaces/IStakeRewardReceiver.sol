@@ -12,6 +12,8 @@ interface IStakeRewardReceiver {
     /// @notice Emitted when reward tokens are received
     event RewardTokensReceived(bytes32 indexed beneficiary, uint256 amount);
 
+    receive() external payable;
+
     // Functions
     /// @notice Transfers reward tokens to given address
     /// @dev the function can only be called by the vault

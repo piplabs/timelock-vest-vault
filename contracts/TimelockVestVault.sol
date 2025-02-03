@@ -77,7 +77,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         uint64 _stakingRewardStart,
         bytes32[] memory _beneficiaries,
         uint256[] memory _allocations
-    ) {
+    ) payable {
         stakingContract = IIPTokenStakingWithFee(_stakingContract);
         whitelist = IValidatorWhitelist(_validatorWhitelist);
 
@@ -97,11 +97,13 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             allocations[_beneficiaries[i]] = _allocations[i];
             IStakeAgent stakeAgent = _createStakeAgent(_beneficiaries[i]);
             IStakeRewardReceiver receiver = _createStakeRewardReceiver(_beneficiaries[i]);
-            stakeAgent.setUnstakeReceiverAddress(address(stakeAgent));
-            stakeAgent.setRewardReceiverAddress(address(receiver));
-            stakeAgent.setOperator(address(this));
+            stakeAgent.setUnstakeReceiverAddress{ value: stakingContract.fee() }(address(stakeAgent));
+            stakeAgent.setRewardReceiverAddress{ value: stakingContract.fee() }(address(receiver));
+            stakeAgent.setOperator{ value: stakingContract.fee() }(address(this));
         }
     }
+
+    receive() external payable {}
 
     /// @notice claim unlocked tokens from vault to the caller, the caller should be a beneficiary
     /// @param amount The amount of unlocked tokens to claim
@@ -307,14 +309,17 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         if (_getStakeAgentAddress(beneficiary).code.length > 0) {
             revert StakeAgentAlreadyExists();
         }
-        return IStakeAgent(Create2.deploy(0, beneficiary, _getStakeAgentCreationCode(beneficiary)));
+        return IStakeAgent(payable(Create2.deploy(0, beneficiary, _getStakeAgentCreationCode(beneficiary))));
     }
 
     function _createStakeRewardReceiver(bytes32 beneficiary) internal returns (IStakeRewardReceiver receiver) {
         if (_getStakeRewardReceiverAddress(beneficiary).code.length > 0) {
             revert StakeRewardReceiverAlreadyExists();
         }
-        return IStakeRewardReceiver(Create2.deploy(0, beneficiary, _getStakeRewardReceiverCreationCode(beneficiary)));
+        return
+            IStakeRewardReceiver(
+                payable(Create2.deploy(0, beneficiary, _getStakeRewardReceiverCreationCode(beneficiary)))
+            );
     }
 
     function _unstakeLockedTokens(uint256 amount, bytes calldata validator, bool force) internal {
@@ -398,11 +403,11 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     }
 
     function _getStakeAgent(bytes32 beneficiary) internal view returns (IStakeAgent) {
-        return IStakeAgent(_getStakeAgentAddress(beneficiary));
+        return IStakeAgent(payable(_getStakeAgentAddress(beneficiary)));
     }
 
     function _getStakeRewardReceiver(bytes32 beneficiary) internal view returns (IStakeRewardReceiver) {
-        return IStakeRewardReceiver(_getStakeRewardReceiverAddress(beneficiary));
+        return IStakeRewardReceiver(payable(_getStakeRewardReceiverAddress(beneficiary)));
     }
 
     function _getStakeAgentAddress(bytes32 beneficiary) internal view returns (address) {

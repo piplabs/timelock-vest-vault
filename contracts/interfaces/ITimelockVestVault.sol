@@ -35,6 +35,8 @@ interface ITimelockVestVault {
     /// @param amount The amount of staking rewards claimed
     event StakingRewardsClaimed(bytes32 indexed beneficiary, uint256 amount);
 
+    receive() external payable;
+
     // Functions
     /// @notice claim unlocked tokens from vault to the caller, the caller should be a beneficiary
     /// @param amount The amount of unlocked tokens to claim

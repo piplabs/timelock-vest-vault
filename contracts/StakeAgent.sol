@@ -28,6 +28,8 @@ contract StakeAgent is IStakeAgent {
         STAKING_CONTRACT = IIPTokenStaking(_stakingContract);
     }
 
+    receive() external payable {}
+
     /// @notice Transfers tokens to the vault
     /// @dev the function can only be called by the vault
     /// @param amount The amount of tokens to transfer
@@ -38,23 +40,23 @@ contract StakeAgent is IStakeAgent {
 
     /// @notice set the unstake receiver address in IPStaking contract
     /// @dev the function can only be called by the vault
-    function setUnstakeReceiverAddress(address unstakeReceiver) external override onlyVault {
-        STAKING_CONTRACT.setWithdrawalAddress(unstakeReceiver);
+    function setUnstakeReceiverAddress(address unstakeReceiver) external payable override onlyVault {
+        STAKING_CONTRACT.setWithdrawalAddress{ value: msg.value }(unstakeReceiver);
         emit UnstakeReceiverAddressSet(BENEFICIARY, unstakeReceiver);
     }
 
     /// @notice set the reward receiver address in IPStaking contract
     /// @dev the function can only be called by the vault
-    function setRewardReceiverAddress(address rewardReceiver) external override onlyVault {
-        STAKING_CONTRACT.setRewardsAddress(rewardReceiver);
+    function setRewardReceiverAddress(address rewardReceiver) external payable override onlyVault {
+        STAKING_CONTRACT.setRewardsAddress{ value: msg.value }(rewardReceiver);
         emit RewardReceiverAddressSet(BENEFICIARY, rewardReceiver);
     }
 
     /// @notice set the operator address of this StakeAgent in IPStaking contract
     /// @dev the function can only be called by the vault
     /// @param _operator The address of the operator
-    function setOperator(address _operator) external override onlyVault {
-        STAKING_CONTRACT.setOperator(_operator);
+    function setOperator(address _operator) external payable override onlyVault {
+        STAKING_CONTRACT.setOperator{ value: msg.value }(_operator);
     }
 
     /// @notice return the beneficiary address (hashed) associated with this StakeAgent

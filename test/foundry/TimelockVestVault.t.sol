@@ -12,125 +12,6 @@ import "../../contracts/StakeRewardReceiver.sol";
 // Mocks
 //
 
-// Minimal mock for IIPTokenStakingWithFee.
-// This mock implements all functions from IIPTokenStaking so that it can be deployed.
-// For functions not used in tests (such as createValidator, stake, updateValidatorCommission, etc.)
-// the implementation simply reverts.
-contract MockStaking is IIPTokenStakingWithFee {
-    uint256 public override fee;
-
-    event StakeOnBehalfCalled(address indexed delegator, bytes validator, uint256 stakingPeriod, bytes data);
-    event UnstakeOnBehalfCalled(address indexed delegator, bytes validator, uint256 delegationId, uint256 amount, bytes data);
-
-    constructor(uint256 _fee) {
-        fee = _fee;
-    }
-
-    // Functions used in tests:
-    function stakeOnBehalf(
-        address delegator,
-        bytes calldata validator,
-        IIPTokenStaking.StakingPeriod stakingPeriod,
-        bytes calldata data
-    ) external payable override returns (uint256 delegationId) {
-        emit StakeOnBehalfCalled(delegator, validator, uint256(stakingPeriod), data);
-        return 0;
-    }
-
-    function unstakeOnBehalf(
-        address delegator,
-        bytes calldata validator,
-        uint256 delegationId,
-        uint256 amount,
-        bytes calldata data
-    ) external payable override {
-        emit UnstakeOnBehalfCalled(delegator, validator, delegationId, amount, data);
-    }
-
-    // --- Dummy implementations for the rest of IIPTokenStaking functions ---
-    function createValidator(
-        bytes calldata,
-        string calldata,
-        uint32,
-        uint32,
-        uint32,
-        bool,
-        bytes calldata
-    ) external payable override {
-        revert("Not implemented");
-    }
-
-    function stake(
-        bytes calldata validatorCmpPubkey,
-        IIPTokenStaking.StakingPeriod stakingPeriod,
-        bytes calldata data
-    ) external payable override returns (uint256 delegationId) {
-        revert("Not implemented");
-    }
-
-    function updateValidatorCommission(
-        bytes calldata validatorCmpPubkey,
-        uint32 commissionRate
-    ) external payable override {
-        revert("Not implemented");
-    }
-
-    function redelegate(
-        bytes calldata,
-        bytes calldata,
-        uint256,
-        uint256
-    ) external payable override {
-        revert("Not implemented");
-    }
-
-    function redelegateOnBehalf(
-        address,
-        bytes calldata,
-        bytes calldata,
-        uint256,
-        uint256
-    ) external payable override {
-        revert("Not implemented");
-    }
-
-    function roundedStakeAmount(uint256) external view override returns (uint256, uint256) {
-        revert("Not implemented");
-    }
-
-    function setOperator(address) external payable override {
-//        revert("Not implemented");
-    }
-
-    function unsetOperator() external payable override {
-        revert("Not implemented");
-    }
-
-    function setWithdrawalAddress(address) external payable override {
-//        revert("Not implemented");
-    }
-
-    function setRewardsAddress(address) external payable override {
-//        revert("Not implemented");
-    }
-
-    function unstake(
-        bytes calldata,
-        uint256,
-        uint256,
-        bytes calldata
-    ) external payable override {
-        revert("Not implemented");
-    }
-
-    function unjail(
-        bytes calldata,
-        bytes calldata
-    ) external payable override {
-        revert("Not implemented");
-    }
-}
-
 // Minimal mock for IValidatorWhitelist.
 contract MockWhitelist is IValidatorWhitelist {
     mapping(bytes32 => bool) internal whitelisted;
@@ -165,7 +46,8 @@ contract MockWhitelist is IValidatorWhitelist {
 
 contract TimelockVestVaultTest is Test {
     TimelockVestVault vault;
-    MockStaking mockStaking;
+    IIPTokenStakingWithFee stakingContract;
+    //    MockStaking mockStaking;
     MockWhitelist mockWhitelist;
 
     // --- Parameters ---
@@ -173,12 +55,12 @@ contract TimelockVestVaultTest is Test {
     uint64 constant START_TIME = 1737273600;
     // Unlock duration and cliff are now expressed in days.
     uint64 constant UNLOCK_DURATION_DAYS = 1440; // 4 years = 1440 days
-    uint64 constant CLIFF_DURATION_DAYS = 360;     // 1 year = 360 days
+    uint64 constant CLIFF_DURATION_DAYS = 360; // 1 year = 360 days
     // Staking reward unlock start timestamp (example)
     uint64 constant STAKING_REWARD_UNLOCK_START = 1755673200;
 
     // For this test, assume each beneficiary is allocated 360 tokens.
-    uint256 constant ALLOCATION = 360 ether;
+    uint256 constant ALLOCATION = 36_000_000 ether;
     // Total funding is the sum of allocations for two beneficiaries.
     uint256 constant TOTAL_FUNDING = ALLOCATION * 2;
 
@@ -188,7 +70,7 @@ contract TimelockVestVaultTest is Test {
     address user1;
 
     // A sample validator (as raw bytes) that will be whitelisted.
-    bytes sampleValidator = "validator1";
+    bytes sampleValidator = hex"0381513466154dfc0e702d8325d7a45284bc395f60b813230da299fab640c1eb08";
 
     // --- Events (per ITimelockVestVault interface) ---
     event UnlockedTokensClaimed(bytes32 indexed beneficiary, uint256 amount);
@@ -204,11 +86,14 @@ contract TimelockVestVaultTest is Test {
     }
 
     function setUp() public {
+        uint256 forkId = vm.createFork("https://aeneid.storyrpc.io");
+        vm.selectFork(forkId);
+
         beneficiary1 = _toHash(address(this));
         user1 = vm.addr(1);
         beneficiary2 = _toHash(user1);
 
-        mockStaking = new MockStaking(0.01 ether);
+        stakingContract = IIPTokenStakingWithFee(address(0xCCcCcC0000000000000000000000000000000001));
         mockWhitelist = new MockWhitelist();
 
         // Whitelist our sample validator.
@@ -224,8 +109,9 @@ contract TimelockVestVaultTest is Test {
         allocations[1] = ALLOCATION;
 
         // Deploy the vault. Note that _unlockDurationDays and _cliffDurationDays are passed as day counts.
-        vault = new TimelockVestVault(
-            address(mockStaking),
+        vm.deal(address(this), 6 ether);
+        vault = new TimelockVestVault{ value: 6 ether }(
+            address(stakingContract),
             address(mockWhitelist),
             START_TIME,
             UNLOCK_DURATION_DAYS,
@@ -259,9 +145,9 @@ contract TimelockVestVaultTest is Test {
     function testClaimUnlockedTokensAtCliff() public {
         // Warp exactly to the cliff time.
         vm.warp(START_TIME + CLIFF_DURATION_DAYS * 1 days);
-        // Expected unlocked at cliff = 25% of allocation = 360 * 25/100 = 90 ether.
-        uint256 expectedUnlocked = ALLOCATION * 25 / 100;
-        uint256 claimAmount = 50 ether; // Claim an amount less than expected unlocked.
+        // Expected unlocked at cliff = 25% of allocation = 36_000_000 * 25/100 = 9_000_000 ether.
+        uint256 expectedUnlocked = (ALLOCATION * 25) / 100;
+        uint256 claimAmount = 5_000_000 ether; // Claim an amount less than expected unlocked.
         uint256 initialBalance = address(this).balance;
         vm.expectEmit(true, false, false, true);
         emit UnlockedTokensClaimed(beneficiary1, claimAmount);
@@ -273,20 +159,23 @@ contract TimelockVestVaultTest is Test {
     // Test the view function getUnlockedAmount for beneficiary1.
     function testGetUnlockedAmount() public {
         // Before the cliff, unlocked amount should be zero.
-        uint256 unlockedBefore = vault.getUnlockedAmount(address(this), START_TIME + CLIFF_DURATION_DAYS * 1 days - 1 days);
+        uint256 unlockedBefore = vault.getUnlockedAmount(
+            address(this),
+            START_TIME + CLIFF_DURATION_DAYS * 1 days - 1 days
+        );
         assertEq(unlockedBefore, 0);
 
         // At cliff time, expected unlocked = 25% of allocation.
         uint256 unlockedAtCliff = vault.getUnlockedAmount(address(this), START_TIME + CLIFF_DURATION_DAYS * 1 days);
-        uint256 expectedAtCliff = ALLOCATION * 25 / 100; // 90 ether.
+        uint256 expectedAtCliff = (ALLOCATION * 25) / 100; // 9_000_000 ether.
         assertEq(unlockedAtCliff, expectedAtCliff);
 
         // At 18 months from start (18 * 30 days = 540 days),
         // elapsedAfterCliff = 540 days - 360 days = 180 days.
-        // Expected unlocked = 135 ether (per contract formula).
+        // Expected unlocked = 13_500_000 ether (per contract formula).
         uint64 time18 = START_TIME + 18 * 30 days;
         uint256 unlockedAt18 = vault.getUnlockedAmount(address(this), time18);
-        uint256 expectedAt18 = 135 ether;
+        uint256 expectedAt18 = 13_500_000 ether;
         assertEq(unlockedAt18, expectedAt18);
     }
 
@@ -294,7 +183,7 @@ contract TimelockVestVaultTest is Test {
     function testStakeLockedTokensSuccess() public {
         // Warp to a time well before the cliff so that unlocked = 0 and stakeable = allocation.
         vm.warp(START_TIME + 10 days);
-        uint256 stakeAmount = 100 ether;
+        uint256 stakeAmount = 10_000_000 ether;
         vm.expectEmit(true, false, false, true);
         emit LockedTokensStaked(beneficiary1, sampleValidator, stakeAmount);
         vault.stakeLockedTokens(stakeAmount, sampleValidator);
@@ -303,7 +192,7 @@ contract TimelockVestVaultTest is Test {
     // Test that staking fails when using a validator that is not whitelisted.
     function testStakeLockedTokensValidatorNotWhitelisted() public {
         bytes memory invalidValidator = "invalid";
-        uint256 stakeAmount = 50 ether;
+        uint256 stakeAmount = 5_000_000 ether;
         vm.expectRevert(TimelockVestVault.ValidatorNotWhitelisted.selector);
         vault.stakeLockedTokens(stakeAmount, invalidValidator);
     }
@@ -311,10 +200,10 @@ contract TimelockVestVaultTest is Test {
     // Test unstaking locked tokens (beneficiary1).
     function testUnstakeLockedTokensSuccess() public {
         vm.warp(START_TIME + 10 days);
-        uint256 stakeAmount = 100 ether;
+        uint256 stakeAmount = 10_000_000 ether;
         vault.stakeLockedTokens(stakeAmount, sampleValidator);
 
-        uint256 unstakeAmount = 50 ether;
+        uint256 unstakeAmount = 5_000_000 ether;
         vm.expectEmit(true, false, false, true);
         emit LockedTokensUnstakeRequested(beneficiary1, sampleValidator, unstakeAmount);
         vault.unstakeLockedTokens(unstakeAmount, sampleValidator);
@@ -323,16 +212,16 @@ contract TimelockVestVaultTest is Test {
     // Test forced unstake behavior.
     function testForceUnstakeLockedTokens() public {
         vm.warp(START_TIME + 10 days);
-        uint256 stakeAmount = 100 ether;
+        uint256 stakeAmount = 10_000_000 ether;
         vault.stakeLockedTokens(stakeAmount, sampleValidator);
 
         // Forcing an unstake of more than the staked amount should revert.
-        uint256 excessiveUnstake = 120 ether;
+        uint256 excessiveUnstake = 12_000_000 ether;
         vm.expectRevert(TimelockVestVault.NotEnoughStakedTokens.selector);
         vault.forceUnstakeLockedTokens(excessiveUnstake, sampleValidator);
 
         // A valid forced unstake should succeed.
-        uint256 validUnstake = 80 ether;
+        uint256 validUnstake = 8_000_000 ether;
         vault.forceUnstakeLockedTokens(validUnstake, sampleValidator);
     }
 
@@ -349,9 +238,13 @@ contract TimelockVestVaultTest is Test {
         // Compute the StakeRewardReceiver address via Create2.
         bytes memory receiverCreationCode = abi.encodePacked(
             type(StakeRewardReceiver).creationCode,
-            abi.encode(beneficiary1, address(vault), address(mockStaking))
+            abi.encode(beneficiary1, address(vault), address(stakingContract))
         );
-        address rewardReceiverAddress = Create2.computeAddress(beneficiary1, keccak256(receiverCreationCode), address(vault));
+        address rewardReceiverAddress = Create2.computeAddress(
+            beneficiary1,
+            keccak256(receiverCreationCode),
+            address(vault)
+        );
         assertEq(vault.getStakeRewardReceiverAddress(address(this)), rewardReceiverAddress);
         // Fund the reward receiver to simulate earned rewards.
         vm.deal(rewardReceiverAddress, 50 ether);
@@ -373,7 +266,7 @@ contract TimelockVestVaultTest is Test {
         assertEq(stakeable, ALLOCATION);
 
         // Stake 100 ether.
-        uint256 stakeAmount = 100 ether;
+        uint256 stakeAmount = 10_000_000 ether;
         vault.stakeLockedTokens(stakeAmount, sampleValidator);
 
         // Now, stakeable should equal ALLOCATION - staked.
@@ -406,9 +299,9 @@ contract TimelockVestVaultTest is Test {
 
         // Warp to the cliff time.
         vm.warp(START_TIME + CLIFF_DURATION_DAYS * 1 days);
-        // Expected unlocked for beneficiary2 = 25% of allocation = 90 ether.
-        uint256 expectedUnlocked = ALLOCATION * 25 / 100;
-        uint256 claimAmount = 30 ether;
+        // Expected unlocked for beneficiary2 = 25% of allocation = 9_000_000 ether.
+        uint256 expectedUnlocked = (ALLOCATION * 25) / 100;
+        uint256 claimAmount = 3_000_000 ether;
         uint256 initialBalance = user1.balance;
         vm.prank(user1);
         vault.claimUnlockedTokens(claimAmount);
@@ -416,7 +309,7 @@ contract TimelockVestVaultTest is Test {
         assertGe(finalBalance - initialBalance, claimAmount);
 
         // Stake tokens.
-        uint256 stakeAmount = 50 ether;
+        uint256 stakeAmount = 5_000_000 ether;
         vm.prank(user1);
         vm.expectEmit(true, false, false, true);
         emit LockedTokensStaked(_toHash(user1), sampleValidator, stakeAmount);
