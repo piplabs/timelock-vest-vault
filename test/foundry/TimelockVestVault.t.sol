@@ -56,6 +56,7 @@ contract TimelockVestVaultTest is Test {
     // Unlock duration and cliff are now expressed in days.
     uint64 constant UNLOCK_DURATION_DAYS = 1440; // 4 years = 1440 days
     uint64 constant CLIFF_DURATION_DAYS = 360; // 1 year = 360 days
+    uint64 constant CLIFF_UNLOCK_PERCENTAGE = 25; // 25% of allocation
     // Staking reward unlock start timestamp (example)
     uint64 constant STAKING_REWARD_UNLOCK_START = 1755673200;
 
@@ -116,6 +117,7 @@ contract TimelockVestVaultTest is Test {
             START_TIME,
             UNLOCK_DURATION_DAYS,
             CLIFF_DURATION_DAYS,
+            CLIFF_UNLOCK_PERCENTAGE,
             STAKING_REWARD_UNLOCK_START,
             beneficiaries,
             allocations

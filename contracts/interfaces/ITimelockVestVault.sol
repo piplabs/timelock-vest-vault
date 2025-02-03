@@ -10,6 +10,7 @@ interface ITimelockVestVault {
         uint64 duration;
         uint64 end;
         uint64 cliff;
+        uint64 cliffPercentage;
     }
 
     // Events

@@ -26,8 +26,6 @@ interface IIPTokenStakingWithFee is IIPTokenStaking {
 ///  unstaked   -> balance of stakeAgent contract of the beneficiary
 ///  stakeable  -> allocation - staked - unlocked
 contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
-    /// @notice Unlock 25% of the allocation at the cliff
-    uint256 public constant CLIFF_UNLOCK_PERCENTAGE = 25;
     // Reference to the deployed IPTokenStaking contract
     IIPTokenStakingWithFee private immutable stakingContract;
 
@@ -74,6 +72,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         uint64 _startTime,
         uint64 _unlockDurationDays,
         uint64 _cliffDurationDays,
+        uint64 _cliffPercentage,
         uint64 _stakingRewardStart,
         bytes32[] memory _beneficiaries,
         uint256[] memory _allocations
@@ -85,7 +84,8 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             start: _startTime,
             duration: _unlockDurationDays * 1 days,
             end: _startTime + _unlockDurationDays * 1 days,
-            cliff: _startTime + _cliffDurationDays * 1 days
+            cliff: _startTime + _cliffDurationDays * 1 days,
+            cliffPercentage: _cliffPercentage
         });
 
         stakingRewardStartTime = _stakingRewardStart;
@@ -398,8 +398,8 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         ///   / (durationAfterCliff * 100)
         // Although the formula can be simplified by factoring out 'alloc', it remains expanded for clarity.
         unlockedAmount =
-            ((alloc * CLIFF_UNLOCK_PERCENTAGE * durationAfterCliff) +
-                (alloc * (100 - CLIFF_UNLOCK_PERCENTAGE) * 30 days * (elapsedAfterCliff / 30 days))) /
+            ((alloc * unlocking.cliffPercentage * durationAfterCliff) +
+                (alloc * (100 - unlocking.cliffPercentage) * 30 days * (elapsedAfterCliff / 30 days))) /
             durationAfterCliff /
             100;
 
