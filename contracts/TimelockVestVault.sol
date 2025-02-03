@@ -204,21 +204,6 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         return totalStakedAmounts[beneficiary] - totalUnstakeRequestedAmounts[beneficiary];
     }
 
-    // for each beneficiary:
-    // allocation = locked + unlocked
-    // total staked = unstaked + remaining staked
-    // unstaked (<= unstake requested <= total staked)
-    // unstke requested
-    // claimed  (<= unlocked)
-    // unlocked
-    // locked (>= total staked - unstaked)
-
-    // claimable
-    // stakeable = allocation - unlocked - staked
-
-    // invariant: allocations[beneficiary] = locked + unlocked
-    //  totalStakedAmounts[beneficiary] + claimeds[beneficiary] + getUnlockedAmount(beneficiary, block.timestamp)
-
     /// @notice Claims the staking rewards
     /// @param amount The amount of staking rewards to claim
     function claimStakingRewards(uint256 amount) external override onlyBeneficiary nonReentrant {
