@@ -322,6 +322,10 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             );
     }
 
+    /// @dev Unstake locked tokens, if force is true, the function will not check the stakeable amount
+    /// @param amount The amount of locked tokens to unstake
+    /// @param validator The address of the validator
+    /// @param force Force unstake without checking the stakeable amount
     function _unstakeLockedTokens(uint256 amount, bytes calldata validator, bool force) internal {
         bytes32 beneficiary = _toHash(msg.sender);
         if (!force) {
@@ -353,6 +357,8 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         emit LockedTokensUnstakeRequested(beneficiary, validator, amount);
     }
 
+    /// @dev Returns the amount of claimable unlocked tokens for a beneficiary
+    /// @param beneficiary The address of the beneficiary
     function _claimableUnlockedTokens(bytes32 beneficiary) internal view returns (uint256 claimable) {
         // formular: claimbale = min[(unlocked - claimed), ((allocation - staked) + unstaked)]
         uint256 claimed = claimeds[beneficiary];
@@ -364,10 +370,20 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         return claimable;
     }
 
+    /// @dev Returns the amount of claimable rewards for a beneficiary
+    /// @param beneficiary The address of the beneficiary
+    /// @return The amount of claimable rewards
     function _claimableStakingRewards(bytes32 beneficiary) internal view returns (uint256) {
         return _getStakeRewardReceiverAddress(beneficiary).balance;
     }
 
+    /// @dev Returns the amount of unlocked tokens for a beneficiary at a given timestamp
+    /// The formula is based on the configurable cliff and monthly unlock percentage.
+    /// If configurable cliff is not considered, the formula can be simplified as:
+    /// unlockedAmount = alloc * 30 days * (elapsed / 30 days) / unlocking.duration;
+    /// @param beneficiary The address of the beneficiary
+    /// @param timestamp The timestamp to check the unlocked amount
+    /// @return unlockedAmount The amount of unlocked tokens
     function _getUnlockedAmount(bytes32 beneficiary, uint64 timestamp) internal view returns (uint256 unlockedAmount) {
         if (timestamp < unlocking.cliff) {
             return 0;
@@ -397,7 +413,6 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         // unlockedAmount = ((alloc * 25 * durationAfterCliff) + (alloc * 75 * 30 days * (elapsedAfterCliff / 30 days)))
         //   / (durationAfterCliff * 100)
         // Although the formula can be simplified by factoring out 'alloc', it remains expanded for clarity.
-        // unlockedAmount = alloc * 30 days * (elapsed / 30 days) / unlocking.duration; (if configurable cliff is not considered)
         unlockedAmount =
             ((alloc * unlocking.cliffPercentage * durationAfterCliff) +
                 (alloc * (100 - unlocking.cliffPercentage) * 30 days * (elapsedAfterCliff / 30 days))) /
