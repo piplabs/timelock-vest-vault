@@ -5,13 +5,11 @@ interface ITimelockVestVault {
     /// start: The start time of the unlocking schedule
     /// duration: The duration of the unlocking schedule
     /// cliff: The cliff time of the unlocking schedule
-    /// monthlyUnlocking: The amount of tokens to unlock monthly
     struct UnlockingSchedule {
         uint64 start;
         uint64 duration;
         uint64 end;
         uint64 cliff;
-        uint256 monthlyUnlocking;
     }
 
     // Events
@@ -101,4 +99,14 @@ interface ITimelockVestVault {
     /// @param beneficiary The address of the beneficiary
     /// @return The amount of stakeable tokens
     function getStakeableAmount(address beneficiary) external view returns (uint256);
+
+    /// @notice get StakeAgent address for the beneficiary
+    /// @param beneficiary The address of the beneficiary
+    /// @return The address of the StakeAgent contract associate with the beneficiary
+    function getStakeAgentAddress(address beneficiary) external view returns (address);
+
+    /// @notice get StakeRewardReceiver address for the beneficiary
+    /// @param beneficiary The address of the beneficiary
+    /// @return The address of the StakeRewardReceiver contract associate with the beneficiary
+    function getStakeRewardReceiverAddress(address beneficiary) external view returns (address);
 }

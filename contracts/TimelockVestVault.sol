@@ -13,19 +13,6 @@ import { IStakeRewardReceiver } from "./interfaces/IStakeRewardReceiver.sol";
 import { StakeAgent } from "./StakeAgent.sol";
 import { StakeRewardReceiver } from "./StakeRewardReceiver.sol";
 
-// Custom errors
-error NotBeneficiary();
-error TokensNotUnlockedYet();
-error AmountMustBeGreaterThanZero();
-error NotEnoughUnlockedTokens();
-error ValidatorNotWhitelisted();
-error InsufficientBalanceInVault();
-error NotEnoughStakedTokens();
-error StakeAgentAlreadyExists();
-error StakeRewardReceiverAlreadyExists();
-error InvalidInputLengths();
-error StakingRewardsNotClaimableYet();
-
 interface IIPTokenStakingWithFee is IIPTokenStaking {
     function fee() external view returns (uint256);
 }
@@ -39,6 +26,8 @@ interface IIPTokenStakingWithFee is IIPTokenStaking {
 ///  unstaked   -> balance of stakeAgent contract of the beneficiary
 ///  stakeable  -> allocation - staked - unlocked
 contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
+    /// @notice Unlock 25% of the allocation at the cliff
+    uint256 public constant CLIFF_UNLOCK_PERCENTAGE = 25;
     // Reference to the deployed IPTokenStaking contract
     IIPTokenStakingWithFee private immutable stakingContract;
 
@@ -58,6 +47,19 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
 
     mapping(bytes32 beneficiary => uint256 rewardClaimed) private rewardClaimeds;
 
+    // Custom errors
+    error NotBeneficiary();
+    error TokensNotUnlockedYet();
+    error AmountMustBeGreaterThanZero();
+    error NotEnoughUnlockedTokens(uint256 amount, uint256 claimable);
+    error ValidatorNotWhitelisted();
+    error InsufficientBalanceInVault();
+    error NotEnoughStakedTokens();
+    error StakeAgentAlreadyExists();
+    error StakeRewardReceiverAlreadyExists();
+    error InvalidInputLengths();
+    error StakingRewardsNotClaimableYet();
+
     modifier onlyBeneficiary() {
         if (allocations[_toHash(msg.sender)] == 0) {
             revert NotBeneficiary();
@@ -73,7 +75,6 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         uint64 _unlockDurationDays,
         uint64 _cliffDurationDays,
         uint64 _stakingRewardStart,
-        uint256 _monthlyUnlocking,
         bytes32[] memory _beneficiaries,
         uint256[] memory _allocations
     ) {
@@ -84,8 +85,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             start: _startTime,
             duration: _unlockDurationDays * 1 days,
             end: _startTime + _unlockDurationDays * 1 days,
-            cliff: _startTime + _cliffDurationDays * 1 days,
-            monthlyUnlocking: _monthlyUnlocking
+            cliff: _startTime + _cliffDurationDays * 1 days
         });
 
         stakingRewardStartTime = _stakingRewardStart;
@@ -116,10 +116,10 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         uint256 claimable = _claimableUnlockedTokens(beneficiary);
         uint256 claimed = claimeds[beneficiary];
         if (claimable < amount) {
-            revert NotEnoughUnlockedTokens();
+            revert NotEnoughUnlockedTokens(amount, claimable);
         }
         claimeds[beneficiary] += amount;
-        emit UnlockedTokensClaimed(beneficiary, claimable);
+        emit UnlockedTokensClaimed(beneficiary, amount);
 
         IStakeAgent stakeAgent = _getStakeAgent(beneficiary);
         uint256 unstaked = address(stakeAgent).balance;
@@ -133,7 +133,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             if (unstaked > remaining) {
                 stakeAgent.transferToVault(remaining);
             } else {
-                revert NotEnoughUnlockedTokens();
+                revert NotEnoughUnlockedTokens(remaining, unstaked);
             }
         }
         // Transfer the unlocked tokens to the beneficiary
@@ -228,7 +228,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         bytes32 beneficiary = _toHash(msg.sender);
         uint256 claimable = _claimableStakingRewards(beneficiary);
         if (claimable < amount) {
-            revert NotEnoughUnlockedTokens();
+            revert NotEnoughUnlockedTokens(amount, claimable);
         }
         if (amount == 0) {
             revert AmountMustBeGreaterThanZero();
@@ -296,6 +296,26 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     /// @return timestamp
     function getStakingRewardClaimableStartTime() external view override returns (uint64 timestamp) {
         return stakingRewardStartTime;
+    }
+
+    /// @notice get StakeAgent address for the beneficiary
+    /// @param beneficiary The address of the beneficiary
+    /// @return The address of the StakeAgent contract associate with the beneficiary
+    function getStakeAgentAddress(address beneficiary) external view returns (address) {
+        if (allocations[_toHash(beneficiary)] == 0) {
+            revert NotBeneficiary();
+        }
+        return _getStakeAgentAddress(_toHash(beneficiary));
+    }
+
+    /// @notice get StakeRewardReceiver address for the beneficiary
+    /// @param beneficiary The address of the beneficiary
+    /// @return The address of the StakeRewardReceiver contract associate with the beneficiary
+    function getStakeRewardReceiverAddress(address beneficiary) external view returns (address) {
+        if (allocations[_toHash(beneficiary)] == 0) {
+            revert NotBeneficiary();
+        }
+        return _getStakeRewardReceiverAddress(_toHash(beneficiary));
     }
 
     function _createStakeAgent(bytes32 beneficiary) internal returns (IStakeAgent stakeAgent) {
@@ -372,11 +392,20 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             return alloc;
         }
 
-        // partial unlocking
         uint256 elapsed = timestamp - unlocking.start;
-        uint256 elapsedMonths = elapsed / 30 days;
-        uint256 monthlyUnlocking = unlocking.monthlyUnlocking;
-        unlockedAmount = elapsedMonths * monthlyUnlocking;
+        uint256 durationAfterCliff = unlocking.end - unlocking.cliff;
+        uint256 elapsedAfterCliff = timestamp - unlocking.cliff;
+        // unlockedAmount = cliff unlock + monthly unlock * elapsed months after cliff
+        // example:
+        // unlockedAmount = (alloc * 25) / 100 + ((alloc * 75) / 100 / durationAfterCliff / 30 days) *
+        //     (elapsedAfterCliff / 30 days)
+        // The expression (elapsedAfterCliff / 30 days) represents the number of whole months that have passed
+        // since the cliff, with any fractional part discarded due to floor rounding.
+        unlockedAmount =
+            ((alloc * CLIFF_UNLOCK_PERCENTAGE * durationAfterCliff) +
+                (alloc * (100 - CLIFF_UNLOCK_PERCENTAGE) * 30 days * (elapsedAfterCliff / 30 days))) /
+            durationAfterCliff /
+            100;
 
         if (unlockedAmount > alloc) {
             unlockedAmount = alloc;
@@ -403,7 +432,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         return
             abi.encodePacked(
                 type(StakeAgent).creationCode,
-                abi.encodePacked(beneficiary, address(this), address(stakingContract))
+                abi.encode(beneficiary, address(this), address(stakingContract))
             );
     }
 
@@ -411,7 +440,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         return
             abi.encodePacked(
                 type(StakeRewardReceiver).creationCode,
-                abi.encodePacked(beneficiary, address(this), address(stakingContract))
+                abi.encode(beneficiary, address(this), address(stakingContract))
             );
     }
 
