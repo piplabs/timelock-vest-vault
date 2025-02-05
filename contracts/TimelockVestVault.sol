@@ -8,9 +8,7 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { ITimelockVestVault } from "./interfaces/ITimelockVestVault.sol";
 import { IValidatorWhitelist } from "./interfaces/IValidatorWhitelist.sol";
 import { IIPTokenStaking } from "./interfaces/IIPTokenStaking.sol";
-import { IStakeAgent } from "./interfaces/IStakeAgent.sol";
 import { IStakeRewardReceiver } from "./interfaces/IStakeRewardReceiver.sol";
-import { StakeAgent } from "./StakeAgent.sol";
 import { StakeRewardReceiver } from "./StakeRewardReceiver.sol";
 
 interface IIPTokenStakingWithFee is IIPTokenStaking {
@@ -26,6 +24,9 @@ interface IIPTokenStakingWithFee is IIPTokenStaking {
 ///  unstaked   -> balance of stakeAgent contract of the beneficiary
 ///  stakeable  -> allocation - staked - unlocked
 contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
+    uint256 public constant HUNDRED_PERCENT = 10000; // 100%
+    uint64 private constant START_2025 = 1735689600; // 2025-01-01 00:00:00 UTC
+
     // Reference to the deployed IPTokenStaking contract
     IIPTokenStakingWithFee private immutable stakingContract;
 
@@ -36,14 +37,14 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
 
     uint64 private immutable stakingRewardStartTime;
 
-    mapping(bytes32 beneficiary => uint256 allocatin) private allocations;
-    mapping(bytes32 beneficiary => uint256 claimed) private claimeds;
+    bytes32 private beneficiary;
 
-    mapping(bytes32 beneficiary => uint256 totalStakedAmount) private totalStakedAmounts;
-    mapping(bytes32 beneficiary => mapping(bytes32 validator => uint256 stakedAmount)) private validatorStakedAmounts;
-    mapping(bytes32 beneficiary => uint256 totalUnstakeRequestedAmount) private totalUnstakeRequestedAmounts;
+    uint256 private allocation;
 
-    mapping(bytes32 beneficiary => uint256 rewardClaimed) private rewardClaimeds;
+    uint256 private claimed;
+
+    // flag to indicate if all tokens are allocated
+    bool private isTokenAllocated;
 
     // Custom errors
     error NotBeneficiary();
@@ -57,87 +58,91 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     error StakeRewardReceiverAlreadyExists();
     error InvalidInputLengths();
     error StakingRewardsNotClaimableYet();
+    error VaultBalanceNotMatchAllocation(uint256 vaultBalance, uint256 allocation);
 
     modifier onlyBeneficiary() {
-        if (allocations[_toHash(msg.sender)] == 0) {
+        if (_toHash(msg.sender) != beneficiary) {
             revert NotBeneficiary();
         }
         _;
     }
 
+    // only allow the function to be called when all tokens are allocated
+    modifier whenTokenAllocated() {
+        if (!isTokenAllocated) {
+            if (address(this).balance < allocation) {
+                revert VaultBalanceNotMatchAllocation(address(this).balance, allocation);
+            } else {
+                isTokenAllocated = true;
+            }
+        }
+        _;
+    }
+
     // Constructor can be designed to set up schedules & references
+    /// @param _stakingContract The address of the staking contract
+    /// @param _validatorWhitelist The address of the validator whitelist contract
+    /// @param _startTime The start time of the unlocking schedule
+    /// @param _unlockDurationMonths The duration of the unlocking schedule in months
+    /// @param _cliffDurationMonths The duration of the cliff period in months
+    /// @param _cliffPercentage The percentage of tokens to be unlocked at the cliff
+    /// @param _stakingRewardStart The start time of can claim staking reward
+    /// @param _beneficiary The address of the beneficiary
+    /// @param _allocation The allocation of the beneficiary
     constructor(
         address _stakingContract,
         address _validatorWhitelist,
         uint64 _startTime,
-        uint64 _unlockDurationDays,
-        uint64 _cliffDurationDays,
+        uint64 _unlockDurationMonths,
+        uint64 _cliffDurationMonths,
         uint64 _cliffPercentage,
         uint64 _stakingRewardStart,
-        bytes32[] memory _beneficiaries,
-        uint256[] memory _allocations
+        bytes32 _beneficiary,
+        uint256 _allocation
     ) payable {
         stakingContract = IIPTokenStakingWithFee(_stakingContract);
         whitelist = IValidatorWhitelist(_validatorWhitelist);
 
         unlocking = UnlockingSchedule({
             start: _startTime,
-            duration: _unlockDurationDays * 1 days,
-            end: _startTime + _unlockDurationDays * 1 days,
-            cliff: _startTime + _cliffDurationDays * 1 days,
+            durationMonths: _unlockDurationMonths,
+            end: getEndTimestamp(_startTime, _unlockDurationMonths),
+            cliff: getEndTimestamp(_startTime, _cliffDurationMonths),
+            cliffMonths: _cliffDurationMonths,
             cliffPercentage: _cliffPercentage
         });
 
         stakingRewardStartTime = _stakingRewardStart;
 
-        if (_beneficiaries.length != _allocations.length) {
-            revert InvalidInputLengths();
-        }
-        for (uint256 i = 0; i < _beneficiaries.length; i++) {
-            allocations[_beneficiaries[i]] = _allocations[i];
-            IStakeAgent stakeAgent = _createStakeAgent(_beneficiaries[i]);
-            IStakeRewardReceiver receiver = _createStakeRewardReceiver(_beneficiaries[i]);
-            stakeAgent.setUnstakeReceiverAddress{ value: stakingContract.fee() }(address(stakeAgent));
-            stakeAgent.setRewardReceiverAddress{ value: stakingContract.fee() }(address(receiver));
-            stakeAgent.setOperator{ value: stakingContract.fee() }(address(this));
-        }
+        beneficiary = _beneficiary;
+        allocation = _allocation;
+        IStakeRewardReceiver receiver = _createStakeRewardReceiver(_beneficiary);
+        stakingContract.setWithdrawalAddress{ value: stakingContract.fee() }(address(this));
+        stakingContract.setRewardsAddress{ value: stakingContract.fee() }(address(receiver));
     }
 
     receive() external payable {}
 
     /// @notice claim unlocked tokens from vault to the caller, the caller should be a beneficiary
     /// @param amount The amount of unlocked tokens to claim
-    function claimUnlockedTokens(uint256 amount) external override onlyBeneficiary nonReentrant {
+    function claimUnlockedTokens(uint256 amount) external override onlyBeneficiary whenTokenAllocated nonReentrant {
         if (block.timestamp < unlocking.cliff) {
             revert TokensNotUnlockedYet();
         }
         if (amount == 0) {
             revert AmountMustBeGreaterThanZero();
         }
-        bytes32 beneficiary = _toHash(msg.sender);
         uint256 claimable = _claimableUnlockedTokens(beneficiary);
-        uint256 claimed = claimeds[beneficiary];
         if (claimable < amount) {
             revert NotEnoughUnlockedTokens(amount, claimable);
         }
-        claimeds[beneficiary] += amount;
+
+        if (address(this).balance < amount) {
+            revert NotEnoughUnlockedTokens(amount, address(this).balance);
+        }
+        claimed += amount;
         emit UnlockedTokensClaimed(beneficiary, amount);
 
-        IStakeAgent stakeAgent = _getStakeAgent(beneficiary);
-        uint256 unstaked = address(stakeAgent).balance;
-        uint256 allocated = allocations[beneficiary];
-        uint256 staked = totalStakedAmounts[beneficiary];
-        uint256 availableInVault = allocated - staked - claimed;
-        if (unstaked >= amount) {
-            stakeAgent.transferToVault(amount);
-        } else if (availableInVault < amount) {
-            uint256 remaining = amount - availableInVault;
-            if (unstaked > remaining) {
-                stakeAgent.transferToVault(remaining);
-            } else {
-                revert NotEnoughUnlockedTokens(remaining, unstaked);
-            }
-        }
         // Transfer the unlocked tokens to the beneficiary
         Address.sendValue(payable(msg.sender), amount);
     }
@@ -148,11 +153,10 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     function stakeLockedTokens(
         uint256 amount,
         bytes calldata validator
-    ) external override onlyBeneficiary nonReentrant {
+    ) external override onlyBeneficiary whenTokenAllocated nonReentrant {
         if (!whitelist.isValidatorWhitelisted(validator)) {
             revert ValidatorNotWhitelisted();
         }
-        bytes32 beneficiary = _toHash(msg.sender);
         uint256 stakeable = _getStakeableAmount(beneficiary);
         if (stakeable < amount) {
             revert NotEnoughStakedTokens();
@@ -164,13 +168,8 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             revert InsufficientBalanceInVault();
         }
 
-        // Increase staked amount
-        totalStakedAmounts[beneficiary] += amount;
-        validatorStakedAmounts[beneficiary][keccak256(validator)] += amount;
-
         emit LockedTokensStaked(beneficiary, validator, amount);
-        stakingContract.stakeOnBehalf{ value: amount }(
-            _getStakeAgentAddress(beneficiary),
+        stakingContract.stake{ value: amount }(
             validator,
             IIPTokenStaking.StakingPeriod.FLEXIBLE,
             ""
@@ -183,36 +182,16 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     function unstakeLockedTokens(
         uint256 amount,
         bytes calldata validator
-    ) external override onlyBeneficiary nonReentrant {
-        _unstakeLockedTokens(amount, validator, false);
-    }
-
-    /// @notice force Unstake locked tokens without checking the stakeable amount
-    /// because unstake took 14 days to complete, and the unstaked amount might not equal to the requested amount
-    /// the unstaked amount might larger than the requested amount when remaining staking balance on validator is less than 1024
-    /// the unstaked amount might less than the requested if the remaining staking balance on validator is less than the requested amount
-    function forceUnstakeLockedTokens(
-        uint256 amount,
-        bytes calldata validator
-    ) external override onlyBeneficiary nonReentrant {
-        _unstakeLockedTokens(amount, validator, true);
-    }
-
-    function getUnstakeableAmount(address beneficiary) external view override returns (uint256) {
-        return _unstakeableAmount(_toHash(beneficiary));
-    }
-
-    function _unstakeableAmount(bytes32 beneficiary) internal view returns (uint256) {
-        return totalStakedAmounts[beneficiary] - totalUnstakeRequestedAmounts[beneficiary];
+    ) external override onlyBeneficiary whenTokenAllocated nonReentrant {
+        _unstakeLockedTokens(amount, validator);
     }
 
     /// @notice Claims the staking rewards
     /// @param amount The amount of staking rewards to claim
-    function claimStakingRewards(uint256 amount) external override onlyBeneficiary nonReentrant {
+    function claimStakingRewards(uint256 amount) external override onlyBeneficiary whenTokenAllocated nonReentrant {
         if (block.timestamp < stakingRewardStartTime) {
             revert StakingRewardsNotClaimableYet();
         }
-        bytes32 beneficiary = _toHash(msg.sender);
         uint256 claimable = _claimableStakingRewards(beneficiary);
         if (claimable < amount) {
             revert NotEnoughUnlockedTokens(amount, claimable);
@@ -224,46 +203,37 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         emit StakingRewardsClaimed(beneficiary, amount);
     }
 
-    function _getStakeableAmount(bytes32 beneficiary) internal view returns (uint256) {
+    /// @notice Returns the amount of stakeable tokens for the beneficiary
+    /// @return The amount of stakeable tokens
+    function getStakeableAmount() external view override returns (uint256) {
         // formula: allocation - unlocked - staked
-        return
-            allocations[beneficiary] -
-            _getUnlockedAmount(beneficiary, uint64(block.timestamp)) -
-            totalStakedAmounts[beneficiary];
+        return _getStakeableAmount(beneficiary);
     }
 
-    function getStakeableAmount(address beneficiary) external view override returns (uint256) {
-        // formula: allocation - unlocked - staked
-        return _getStakeableAmount(_toHash(beneficiary));
-    }
     /// @notice Returns the amount of claimable unlocked tokens for a beneficiary
-    /// @param beneficiary The address of the beneficiary
     /// @return The amount of claimable unlocked tokens
-    function claimableUnlockedTokens(address beneficiary) external view override returns (uint256) {
-        return _claimableUnlockedTokens(_toHash(beneficiary));
+    function claimableUnlockedTokens() external view override returns (uint256) {
+        return _claimableUnlockedTokens(beneficiary);
     }
 
     /// @notice Returns the amount of unlocked tokens for a beneficiary at a given timestamp
-    /// @param beneficiary The address of the beneficiary
     /// @param timestamp The timestamp to check the unlocked amount
     /// @return unlockedAmount The amount of unlocked tokens
     function getUnlockedAmount(
-        address beneficiary,
         uint64 timestamp
     ) external view override returns (uint256 unlockedAmount) {
-        return _getUnlockedAmount(_toHash(beneficiary), timestamp);
+        return _getUnlockedAmount(beneficiary, timestamp);
     }
 
     /// @notice Returns the amount of claimable rewards for a beneficiary,
     /// The staking rewards will be locked for the first 6 months.
     /// After the first 6 months block rewards withheld, all block rewards are unlocked.
-    /// @param beneficiary The address of the beneficiary
     /// @return The amount of claimable rewards
-    function claimableStakingRewards(address beneficiary) external view override returns (uint256) {
+    function claimableStakingRewards() external view override returns (uint256) {
         if (block.timestamp < stakingRewardStartTime) {
             return 0;
         }
-        return _claimableStakingRewards(_toHash(beneficiary));
+        return _claimableStakingRewards(beneficiary);
     }
 
     /// @notice Returns unlocking schedule of the caller (beneficiary)
@@ -285,33 +255,65 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         return stakingRewardStartTime;
     }
 
-    /// @notice get StakeAgent address for the beneficiary
-    /// @param beneficiary The address of the beneficiary
-    /// @return The address of the StakeAgent contract associate with the beneficiary
-    function getStakeAgentAddress(address beneficiary) external view returns (address) {
-        if (allocations[_toHash(beneficiary)] == 0) {
-            revert NotBeneficiary();
-        }
-        return _getStakeAgentAddress(_toHash(beneficiary));
-    }
-
     /// @notice get StakeRewardReceiver address for the beneficiary
-    /// @param beneficiary The address of the beneficiary
     /// @return The address of the StakeRewardReceiver contract associate with the beneficiary
-    function getStakeRewardReceiverAddress(address beneficiary) external view returns (address) {
-        if (allocations[_toHash(beneficiary)] == 0) {
-            revert NotBeneficiary();
-        }
-        return _getStakeRewardReceiverAddress(_toHash(beneficiary));
+    function getStakeRewardReceiverAddress() external view returns (address) {
+        return _getStakeRewardReceiverAddress(beneficiary);
     }
 
-    function _createStakeAgent(bytes32 beneficiary) internal returns (IStakeAgent stakeAgent) {
-        if (_getStakeAgentAddress(beneficiary).code.length > 0) {
-            revert StakeAgentAlreadyExists();
+    /// @notice Returns the month of the timestamp since 2025 -01-01, 2025-01-01 is month 1, 2026-01-01 is month 13
+    /// @param timestamp The timestamp to check the month
+    /// @return month The month of the timestamp
+    function getMonth(uint64 timestamp) public view returns (uint64) {
+        uint8[61] memory MONTH_DURATIONS = _getMonthDurations();
+        uint64 month = 0;
+        uint64 duration = timestamp - START_2025;
+        for (uint64 i = 0; i < MONTH_DURATIONS.length; i++) {
+            if (duration >= MONTH_DURATIONS[i] * 1 days) {
+                duration -= MONTH_DURATIONS[i] * 1 days;
+                month++;
+            } else {
+                break;
+            }
         }
-        return IStakeAgent(payable(Create2.deploy(0, beneficiary, _getStakeAgentCreationCode(beneficiary))));
+        return month;
     }
 
+    /// @notice Get the end timestamp of from startTimestamp after durationMonths.
+    /// @dev example:
+    /// from 2025-01-01 after 1 month is 2025-02-01  (31 days)
+    /// from 2025-01-01 after 2 month is 2025-03-01  (31 days + 28 days)
+    /// from 2025-01-01 after 3 month is 2025-04-01  (31 days + 28 days + 31 days)
+    /// @param startTimestamp The start timestamp
+    /// @param durationMonths The duration in months
+    /// @return endTimestamp The end timestamp
+    function getEndTimestamp(uint64 startTimestamp, uint64 durationMonths) public view returns (uint64) {
+        uint8[61] memory MONTH_DURATIONS = _getMonthDurations();
+        // get start month from startTimestamp
+        // for each month, add the duration of the month to startTimestamp
+        uint64 endTimestamp = startTimestamp;
+        for (uint64 i = 0; i < durationMonths; i++) {
+            endTimestamp += MONTH_DURATIONS[getMonth(endTimestamp)] * 1 days;
+        }
+        return endTimestamp;
+    }
+
+    /// @dev define an array of month durations for 2025-2029, 2025-01-01 is month 1, 2026-01-01 is month 13
+    /// @return MONTH_DURATIONS The array of month durations
+    function _getMonthDurations() internal pure returns (uint8[61] memory) {
+        uint8[61] memory MONTH_DURATIONS = [
+                    0,31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+                    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+                    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+                    31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+                    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+            ];
+        return MONTH_DURATIONS;
+    }
+
+    /// @dev Create a new StakeRewardReceiver contract for the beneficiary
+    /// @param beneficiary The address of the beneficiary
+    /// @return receiver The StakeRewardReceiver contract
     function _createStakeRewardReceiver(bytes32 beneficiary) internal returns (IStakeRewardReceiver receiver) {
         if (_getStakeRewardReceiverAddress(beneficiary).code.length > 0) {
             revert StakeRewardReceiverAlreadyExists();
@@ -325,29 +327,15 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     /// @dev Unstake locked tokens, if force is true, the function will not check the stakeable amount
     /// @param amount The amount of locked tokens to unstake
     /// @param validator The address of the validator
-    /// @param force Force unstake without checking the stakeable amount
-    function _unstakeLockedTokens(uint256 amount, bytes calldata validator, bool force) internal {
-        bytes32 beneficiary = _toHash(msg.sender);
-        if (!force) {
-            uint256 unstakeable = _unstakeableAmount(beneficiary);
-            if (unstakeable < amount) {
-                revert NotEnoughStakedTokens();
-            }
-        }
+    function _unstakeLockedTokens(uint256 amount, bytes calldata validator) internal {
         if (amount == 0) {
             revert AmountMustBeGreaterThanZero();
         }
 
         bytes32 validatorHash = keccak256(validator);
-        uint256 stakedForValidator = validatorStakedAmounts[beneficiary][validatorHash];
-        if (stakedForValidator < amount) {
-            revert NotEnoughStakedTokens();
-        }
 
-        totalUnstakeRequestedAmounts[beneficiary] += amount;
         // delegation id is 0 for flexible staking
-        stakingContract.unstakeOnBehalf{ value: stakingContract.fee() }(
-            _getStakeAgentAddress(beneficiary),
+        stakingContract.unstake{ value: stakingContract.fee() }(
             validator,
             0,
             amount,
@@ -360,13 +348,9 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     /// @dev Returns the amount of claimable unlocked tokens for a beneficiary
     /// @param beneficiary The address of the beneficiary
     function _claimableUnlockedTokens(bytes32 beneficiary) internal view returns (uint256 claimable) {
-        // formular: claimbale = min[(unlocked - claimed), ((allocation - staked) + unstaked)]
-        uint256 claimed = claimeds[beneficiary];
+        // formular: claimbale = min[(unlocked - claimed), balance]
         uint256 unlockedSoFar = _getUnlockedAmount(beneficiary, uint64(block.timestamp));
-        uint256 unstaked = _getStakeAgentAddress(beneficiary).balance;
-        uint256 allocation = allocations[beneficiary];
-        uint256 staked = totalStakedAmounts[beneficiary];
-        claimable = Math.min(unlockedSoFar - claimed, allocation - staked + unstaked);
+        claimable = Math.min(unlockedSoFar - claimed, address(this).balance);
         return claimable;
     }
 
@@ -377,10 +361,16 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         return _getStakeRewardReceiverAddress(beneficiary).balance;
     }
 
+    /// @dev Returns the amount of stakeable tokens for a beneficiary
+    /// @param beneficiary The address of the beneficiary
+    /// @return The amount of stakeable tokens
+    function _getStakeableAmount(bytes32 beneficiary) internal view returns (uint256) {
+        // formula: balance - (unlocked - claimed)
+        return address(this).balance - _getUnlockedAmount(beneficiary, uint64(block.timestamp)) - claimed;
+    }
+
     /// @dev Returns the amount of unlocked tokens for a beneficiary at a given timestamp
     /// The formula is based on the configurable cliff and monthly unlock percentage.
-    /// If configurable cliff is not considered, the formula can be simplified as:
-    /// unlockedAmount = alloc * 30 days * (elapsed / 30 days) / unlocking.duration;
     /// @param beneficiary The address of the beneficiary
     /// @param timestamp The timestamp to check the unlocked amount
     /// @return unlockedAmount The amount of unlocked tokens
@@ -388,7 +378,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         if (timestamp < unlocking.cliff) {
             return 0;
         }
-        uint256 alloc = allocations[beneficiary];
+        uint256 alloc = allocation;
         if (alloc == 0) {
             return 0;
         }
@@ -398,54 +388,40 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             return alloc;
         }
 
-        uint256 elapsed = timestamp - unlocking.start;
-        uint256 durationAfterCliff = unlocking.end - unlocking.cliff;
-        uint256 elapsedAfterCliff = timestamp - unlocking.cliff;
+        uint64 elapsed = timestamp - unlocking.start;
+        uint64 durationMonthsAfterCliff = unlocking.durationMonths - unlocking.cliffMonths;
+        uint64 elapsedMonths = getMonth(timestamp) - getMonth(unlocking.start);
+        uint64 wholeMonthsEnd = getEndTimestamp(unlocking.start, elapsedMonths);
+        if (wholeMonthsEnd > timestamp) {
+            elapsedMonths -= 1;
+        }
+        uint256 elapsedMonthsAfterCliff = elapsedMonths - unlocking.cliffMonths;
         // unlockedAmount = cliff unlock + monthly unlock * elapsed months after cliff
+        //   unlockedAmount = (alloc * unlocking.cliffPercentage) / 100 +
+        //      (alloc * (100 - unlocking.cliffPercentage) / 100) / durationMonthsAfterCliff * elapsedMonthsAfterCliff;
         // example:
-        // unlockedAmount = (alloc * 25) / 100 + ((alloc * 75) / 100 / durationAfterCliff / 30 days) *
-        //     (elapsedAfterCliff / 30 days)
-        // The expression (elapsedAfterCliff / 30 days) represents the number of whole months that have passed
-        // since the cliff, with any fractional part discarded due to floor rounding.
-        //
-        // Multiply by durationAfterCliff before dividing to mitigate precision loss from rounding.
+        // unlockedAmount = (alloc * 25) / 100 + ((alloc * 75) / 100) / durationMonthsAfterCliff *
+        //    elapsedMonthsAfterCliff
+        // Multiply by durationMonthsAfterCliff before dividing to mitigate precision loss from rounding.
         // unlockedAmount is calculated as:
-        // unlockedAmount = ((alloc * 25 * durationAfterCliff) + (alloc * 75 * 30 days * (elapsedAfterCliff / 30 days)))
-        //   / (durationAfterCliff * 100)
+        // unlockedAmount = ((alloc * 25 * durationMonthsAfterCliff) + (alloc * 75 * elapsedMonthsAfterCliff)) /
+        //    (durationMonthsAfterCliff * 100);
         // Although the formula can be simplified by factoring out 'alloc', it remains expanded for clarity.
-        unlockedAmount =
-            ((alloc * unlocking.cliffPercentage * durationAfterCliff) +
-                (alloc * (100 - unlocking.cliffPercentage) * 30 days * (elapsedAfterCliff / 30 days))) /
-            durationAfterCliff /
-            100;
+        unlockedAmount = ((alloc * unlocking.cliffPercentage * durationMonthsAfterCliff) +
+            (alloc * (HUNDRED_PERCENT - unlocking.cliffPercentage) * elapsedMonthsAfterCliff)) /
+            (durationMonthsAfterCliff * HUNDRED_PERCENT);
 
         if (unlockedAmount > alloc) {
             unlockedAmount = alloc;
         }
     }
 
-    function _getStakeAgent(bytes32 beneficiary) internal view returns (IStakeAgent) {
-        return IStakeAgent(payable(_getStakeAgentAddress(beneficiary)));
-    }
-
     function _getStakeRewardReceiver(bytes32 beneficiary) internal view returns (IStakeRewardReceiver) {
         return IStakeRewardReceiver(payable(_getStakeRewardReceiverAddress(beneficiary)));
     }
 
-    function _getStakeAgentAddress(bytes32 beneficiary) internal view returns (address) {
-        return Create2.computeAddress(beneficiary, keccak256(_getStakeAgentCreationCode(beneficiary)));
-    }
-
     function _getStakeRewardReceiverAddress(bytes32 beneficiary) internal view returns (address) {
         return Create2.computeAddress(beneficiary, keccak256(_getStakeRewardReceiverCreationCode(beneficiary)));
-    }
-
-    function _getStakeAgentCreationCode(bytes32 beneficiary) internal view returns (bytes memory) {
-        return
-            abi.encodePacked(
-                type(StakeAgent).creationCode,
-                abi.encode(beneficiary, address(this), address(stakingContract))
-            );
     }
 
     function _getStakeRewardReceiverCreationCode(bytes32 beneficiary) internal view returns (bytes memory) {
