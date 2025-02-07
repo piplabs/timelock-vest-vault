@@ -229,7 +229,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         uint8[48] memory MONTH_DURATIONS = _getMonthDurations();
         endTimestamp = START_TIME;
         for (uint64 i = 0; i < durationMonths; i++) {
-            endTimestamp += MONTH_DURATIONS[i] * 1 days;
+            endTimestamp += MONTH_DURATIONS[i] * 1 minutes;
         }
     }
 
@@ -240,7 +240,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         elapsedMonths = 0;
         uint64 endTimestamp = START_TIME;
         for (uint64 i = 0; i < MONTH_DURATIONS.length; i++) {
-            endTimestamp += MONTH_DURATIONS[i] * 1 days;
+            endTimestamp += MONTH_DURATIONS[i] * 1 minutes;
             if (endTimestamp <= timestamp) {
                 elapsedMonths += 1;
             } else {
@@ -249,8 +249,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         }
     }
 
-    /// @dev Returns the amount of claimable unlocked tokens for a beneficiary,
-    /// all balance in the vault is withdrawable after unlock duration
+    /// @dev Create a new StakeRewardReceiver contract for the beneficiary
     /// @param beneficiary The address of the beneficiary
     function _withdrawableUnlockedTokens(bytes32 beneficiary) internal view returns (uint256 withdrawable) {
         // all balance in the vault is withdrawable after unlock duration
@@ -307,14 +306,13 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
 
     /// @dev define an array of month durations for 2025-2029, 2025-01-01 is month 1, 2026-01-01 is month 13
     /// @return MONTH_DURATIONS The array of month durations
-    function _getMonthDurations() internal pure returns (uint8[48] memory) {
-        // Start from 2025 Feb. 2025-02 is month 0, 2026-01 is month 11
-        uint8[48] memory MONTH_DURATIONS = [
-                    28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-                    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-                    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-                    31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-                    31
+    function _getMonthDurations() internal pure returns (uint8[61] memory) {
+            uint8[61] memory MONTH_DURATIONS = [
+                0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
             ];
         return MONTH_DURATIONS;
     }
