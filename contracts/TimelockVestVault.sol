@@ -19,9 +19,7 @@ interface IIPTokenStakingWithFee is IIPTokenStaking {
 ///  @dev The contract is designed to track following data for each beneficiary:
 ///  allocation -> allocation of the beneficiary
 ///  unlocked   -> unlocking schedule of the beneficiary
-///  staked     -> total staked amount of the beneficiary
-///  unstaked   -> balance of stakeAgent contract of the beneficiary
-///  stakeable  -> allocation - staked - unlocked
+///  whithdrawn -> total amount of tokens withdrawn by the beneficiary
 contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     uint256 public constant HUNDRED_PERCENT = 10000; // 100%
     uint64 private constant START_TIME = 1739404800; // 2025-02-13 00:00:00 UTC
