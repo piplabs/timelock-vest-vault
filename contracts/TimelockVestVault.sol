@@ -219,26 +219,26 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
 
     /// @notice Get the end timestamp of from START_TIME after durationMonths.
     /// @dev example:
-    /// from 2025-02-13 after 1 month is 2025-03-13  (28 days)
-    /// from 2025-02-13 after 2 month is 2025-04-13  (31 days + 28 days)
+    /// from 2025-02-13 after 1 month is 2025-03-13  (28 minutes)
+    /// from 2025-02-13 after 2 month is 2025-04-13  (1 minutes + 28 minutes)
     /// @param durationMonths The duration in months
     /// @return endTimestamp The end timestamp
     function getEndTimestamp(uint64 durationMonths) public view returns (uint64 endTimestamp) {
-        uint8[48] memory MONTH_DURATIONS = _getMonthDurations();
+        uint8[48] memory MONTH_DURATIONS = _getMinuteDurations();
         endTimestamp = START_TIME;
         for (uint64 i = 0; i < durationMonths; i++) {
-            endTimestamp += MONTH_DURATIONS[i] * 1 days;
+            endTimestamp += MONTH_DURATIONS[i] * 1 minutes;
         }
     }
 
     /// @dev get elapsed months since START_TIME to the timestamp
     /// @return elapsedMonths The elapsed months
     function getElapsedMonths(uint64 timestamp) public pure returns (uint64 elapsedMonths) {
-        uint8[48] memory MONTH_DURATIONS = _getMonthDurations();
+        uint8[48] memory MONTH_DURATIONS = _getMinuteDurations();
         elapsedMonths = 0;
         uint64 endTimestamp = START_TIME;
         for (uint64 i = 0; i < MONTH_DURATIONS.length; i++) {
-            endTimestamp += MONTH_DURATIONS[i] * 1 days;
+            endTimestamp += MONTH_DURATIONS[i] * 1 minutes;
             if (endTimestamp <= timestamp) {
                 elapsedMonths += 1;
             } else {
@@ -300,14 +300,14 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
 
     /// @dev define an array of month durations for 2025-2029, 2025-01-01 is month 1, 2026-01-01 is month 13
     /// @return MONTH_DURATIONS The array of month durations
-    function _getMonthDurations() internal pure returns (uint8[48] memory) {
+    function _getMinuteDurations() internal pure returns (uint8[48] memory) {
         // Start from 2025 Feb. 2025-02 is month 0, 2026-01 is month 11
         uint8[48] memory MONTH_DURATIONS = [
-                    28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-                    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-                    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-                    31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-                    31
+                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                    1
             ];
         return MONTH_DURATIONS;
     }
