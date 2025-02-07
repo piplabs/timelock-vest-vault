@@ -5,6 +5,7 @@ pragma solidity 0.8.26;
 import { Script, stdJson } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { TimelockVestVault } from "../contracts/TimelockVestVault.sol";
+import { ValidatorWhitelist } from "../contracts/ValidatorWhitelist.sol";
 
 contract DeployVaults is Script {
     using stdJson for string;
@@ -36,7 +37,7 @@ contract DeployVaults is Script {
 
 
     function run() public {
-        AllocationBundle memory bundle = _readStoryProtocolCoreAddresses();
+        AllocationBundle memory bundle = _readAllocations();
         vm.startBroadcast(privateKey);
         _deploy(bundle.allocations);
         vm.stopBroadcast();
@@ -63,7 +64,7 @@ contract DeployVaults is Script {
 
     }
 
-    function _readStoryProtocolCoreAddresses() internal returns (AllocationBundle memory) {
+    function _readAllocations() internal returns (AllocationBundle memory) {
         console2.log("Reading allocation file: ", allocationJson);
         string memory json = vm.readFile(allocationJson);
         bytes memory data = vm.parseJson(json);
@@ -74,4 +75,33 @@ contract DeployVaults is Script {
     function _toHash(address addr) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(addr));
     }
+}
+
+contract DeployValidatorWhitelist is Script {
+    uint256 private privateKey = vm.envUint("STORY_PRIVATEKEY");
+    string private validatorJson = vm.envString("STORY_VALIDATORS_INPUT");
+    address private validatorListOwner = vm.envAddress("STORY_DEPLOYER_ADDRESS");
+
+
+    function run() public {
+        vm.startBroadcast(privateKey);
+        _deploy();
+        vm.stopBroadcast();
+    }
+
+    function _deploy() internal {
+        ValidatorWhitelist whitelist = new ValidatorWhitelist(validatorListOwner);
+        console2.log("Whitelist deployed: ", address(whitelist));
+
+
+        console2.log("Reading validators list file: ", validatorJson);
+        string memory json = vm.readFile(validatorJson);
+        bytes[] memory validators = vm.parseJsonBytesArray(json, ".validators");
+        for (uint256 i = 0; i < validators.length; i++) {
+            whitelist.addValidator(validators[i]);
+            console2.log("Validator added: ", vm.toString(validators[i]));
+        }
+
+    }
+
 }
