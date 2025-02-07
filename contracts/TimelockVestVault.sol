@@ -107,6 +107,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     receive() external payable {}
 
     /// @notice withdraw unlocked tokens from vault to the caller, the caller should be a beneficiary
+    /// all balance in the vault is withdrawable after unlock duration
     /// @param amount The amount of unlocked tokens to withdraw
     function withdrawUnlockedTokens(uint256 amount) external override onlyBeneficiary nonReentrant {
         if (block.timestamp < unlocking.cliff) revert TokensNotUnlockedYet();
@@ -247,9 +248,14 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         }
     }
 
-    /// @dev Returns the amount of claimable unlocked tokens for a beneficiary
+    /// @dev Returns the amount of claimable unlocked tokens for a beneficiary,
+    /// all balance in the vault is withdrawable after unlock duration
     /// @param beneficiary The address of the beneficiary
     function _withdrawableUnlockedTokens(bytes32 beneficiary) internal view returns (uint256 withdrawable) {
+        // all balance in the vault is withdrawable after unlock duration
+        if (block.timestamp >= unlocking.end) {
+            return address(this).balance;
+        }
         // formular: withdrawable = min[(unlocked - withdrawn), balance]
         uint256 unlockedSoFar = _getUnlockedAmount(beneficiary, uint64(block.timestamp));
         withdrawable = Math.min(unlockedSoFar - withdrawn, address(this).balance);
