@@ -4,6 +4,16 @@
 
 all: clean install build
 
+# function: generate abi for given contract name (key)
+# requires contract name to match the file name
+define generate_abi
+    $(eval $@_CONTRACT_NAME = $(1))
+		$(eval $@_CONTRACT_PATH = $(2))
+		forge inspect --optimize --optimizer-runs 20000 contracts/${$@_CONTRACT_PATH}/${$@_CONTRACT_NAME}.sol:${$@_CONTRACT_NAME} abi > abi/${$@_CONTRACT_NAME}.json
+endef
+
+
+
 # Clean the repo
 forge-clean  :; forge clean
 clean  :; npx hardhat clean
@@ -34,4 +44,11 @@ deploy-goerli :; npx hardhat run ./script/deploy-reveal-engine.js --network goer
 verify-goerli :; npx hardhat verify --network goerli ${contract}
 
 anvil :; anvil -m 'test test test test test test test test test test test junk'
+
+abi:
+	rm -rf abi
+	mkdir -p abi
+	@$(call generate_abi,"StakeRewardReceiver",".")
+	@$(call generate_abi,"TimelockVestVault",".")
+	@$(call generate_abi,"ValidatorWhitelist",".")
 

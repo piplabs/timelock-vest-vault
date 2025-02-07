@@ -1,0 +1,17 @@
+{
+  "allocations": [
+    {
+      "beneficiary": "0xFbD5BE3815b71564Dc51C3C8301c47770fC9a61c",
+      "lockedAmount": 1000
+    },
+    {
+      "beneficiary": "0x1b3f4fCa8105A15aed3B6E48b9Bf09ff6B592c87",
+      "lockedAmount": 1000
+    },
+    {
+      "beneficiary": "0x526F40873DDAf4709784cfDFE82935f97Ce849cE",
+      "lockedAmount": 1000
+    }
+  ],
+  "name": "Investor Allocations"
+}

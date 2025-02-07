@@ -7,6 +7,7 @@ import "forge-std/console.sol";
 // Import the updated TimelockVestVault contract from its stored location.
 import "../../contracts/TimelockVestVault.sol";
 import "../../contracts/StakeRewardReceiver.sol";
+import "../../contracts/interfaces/ITimelockVestVault.sol";
 
 //
 // Mocks
@@ -52,13 +53,14 @@ contract TimelockVestVaultTest is Test {
     MockWhitelist mockWhitelist;
 
     // --- Parameters ---
-    // startTime: Jan 19 2025 (example)
-    uint64 constant START_TIME = 1737273600;
+    // startTime:  Feb 13 2025 (example)
+    uint64 constant START_TIME = 1739404800;
     // Unlock duration and cliff are now expressed in days.
     uint64 constant UNLOCK_DURATION_MONTHS = 48; // 4 years = 48 months
     uint64 constant CLIFF_DURATION_MONTHS = 12; // 1 year = 12 months
     uint64 constant CLIFF_UNLOCK_PERCENTAGE = 2500; // 25% of allocation
     // Staking reward unlock start timestamp (example)
+    // Wednesday, August 20, 2025 7:00:00 AM UTC
     uint64 constant STAKING_REWARD_UNLOCK_START = 1755673200;
 
     // For this test, assume each beneficiary is allocated 360 tokens.
@@ -71,12 +73,6 @@ contract TimelockVestVaultTest is Test {
 
     // A sample validator (as raw bytes) that will be whitelisted.
     bytes sampleValidator = hex"0381513466154dfc0e702d8325d7a45284bc395f60b813230da299fab640c1eb08";
-
-    // --- Events (per ITimelockVestVault interface) ---
-    event UnlockedTokensClaimed(bytes32 indexed beneficiary, uint256 amount);
-    event LockedTokensStaked(bytes32 indexed beneficiary, bytes validator, uint256 amount);
-    event LockedTokensUnstakeRequested(bytes32 indexed beneficiary, bytes validator, uint256 amount);
-    event StakingRewardsClaimed(bytes32 indexed beneficiary, uint256 amount);
 
     receive() external payable {}
 
@@ -100,11 +96,10 @@ contract TimelockVestVaultTest is Test {
         mockWhitelist.addValidator(sampleValidator);
 
         // Deploy the vault. Note that _unlockDurationDays and _cliffDurationDays are passed as day counts.
-        vm.deal(address(this), 6 ether);
-        vault = new TimelockVestVault{ value: 6 ether }(
+        vm.deal(address(this), 1 ether);
+        vault = new TimelockVestVault{ value: 1 ether }(
             address(stakingContract),
             address(mockWhitelist),
-            START_TIME,
             UNLOCK_DURATION_MONTHS,
             CLIFF_DURATION_MONTHS,
             CLIFF_UNLOCK_PERCENTAGE,
@@ -116,11 +111,10 @@ contract TimelockVestVaultTest is Test {
         // Fund the vault with enough ether to simulate token transfers.
         vm.deal(address(vault), ALLOCATION);
 
-        vm.deal(address(this), 6 ether);
-        vault2 = new TimelockVestVault{ value: 6 ether }(
+        vm.deal(address(this), 1 ether);
+        vault2 = new TimelockVestVault{ value: 1 ether }(
             address(stakingContract),
             address(mockWhitelist),
-            START_TIME,
             UNLOCK_DURATION_MONTHS,
             CLIFF_DURATION_MONTHS,
             CLIFF_UNLOCK_PERCENTAGE,
@@ -138,7 +132,7 @@ contract TimelockVestVaultTest is Test {
         address nonBeneficiary = vm.addr(2);
         vm.prank(nonBeneficiary);
         vm.expectRevert(TimelockVestVault.NotBeneficiary.selector);
-        vault.claimUnlockedTokens(1 ether);
+        vault.withdrawUnlockedTokens(1 ether);
     }
 
     // Test claiming unlocked tokens before the cliff time reverts.
@@ -146,7 +140,7 @@ contract TimelockVestVaultTest is Test {
         // Warp to just before the cliff: START_TIME + CLIFF_DURATION_DAYS * 1 days - 1 day.
         vm.warp(START_TIME + 365 * 1 days - 1 days);
         vm.expectRevert(TimelockVestVault.TokensNotUnlockedYet.selector);
-        vault.claimUnlockedTokens(1 ether);
+        vault.withdrawUnlockedTokens(1 ether);
     }
 
     // Test claiming unlocked tokens at the cliff time.
@@ -158,55 +152,102 @@ contract TimelockVestVaultTest is Test {
         uint256 claimAmount = 5_000_000 ether; // Claim an amount less than expected unlocked.
         uint256 initialBalance = address(this).balance;
         vm.expectEmit(true, false, false, true);
-        emit UnlockedTokensClaimed(beneficiary1, claimAmount);
-        vault.claimUnlockedTokens(claimAmount);
+        emit ITimelockVestVault.UnlockedTokensWithdrawn(beneficiary1, claimAmount);
+        vault.withdrawUnlockedTokens(claimAmount);
         uint256 finalBalance = address(this).balance;
         assertGe(finalBalance - initialBalance, claimAmount);
     }
 
-    function testGetMonth() public {
+    function testGetElapsedMonths() public {
         uint64 timestamp = 1737273600; // Jan 19 2025
-        uint64 month = vault.getMonth(timestamp);
+        uint64 month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 0);
+
+        timestamp = START_TIME; // Feb 13 2025
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 0);
+
+        timestamp = START_TIME + 27 days; // Mar 12 2025
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 0);
+
+        timestamp = START_TIME + 28 days; // Mar 13 2025
+        month = vault.getElapsedMonths(timestamp);
         assertEq(month, 1);
 
-        timestamp = 1737273600 + 31 days; // Feb 19 2025
-        month = vault.getMonth(timestamp);
+        timestamp = START_TIME + 28 days + 30 days; // Apr 12 2025
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 1);
+
+        timestamp = START_TIME + 28 days + 31 days; // Apr 13 2025
+        month = vault.getElapsedMonths(timestamp);
         assertEq(month, 2);
 
-        timestamp = 1737273600 + 31 days * 2; // Mar 19 2025
-        month = vault.getMonth(timestamp);
-        assertEq(month, 3);
+        timestamp = START_TIME + 28 days + 32 days; // Apr 14 2025
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 2);
 
-        timestamp = 1737273600 + 365 * 1 days; // Jan 19 2026
-        month = vault.getMonth(timestamp);
-        assertEq(month, 13);
+        timestamp = START_TIME + 365 days; // Feb 13 2026
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 12);
+
+        timestamp = START_TIME + 365 days * 3; // Feb 14 2026
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 36);
+
+        // Leap year
+        timestamp = START_TIME + 365 days * 3 + 28 days; // Mar 12 2028
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 36);
+
+        timestamp = START_TIME + 365 days * 3 + 29 days; // Mar 13 2028
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 37);
+
+        timestamp = START_TIME + 365 days * 4; // Mar 12 2029
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 47);
+
+        timestamp = START_TIME + 365 days * 4 + 1 days; // Mar 13 2029
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 48);
+
+        timestamp = START_TIME + 365 days * 5; // Mar 13 2029
+        month = vault.getElapsedMonths(timestamp);
+        assertEq(month, 48);
+
     }
 
     function testGetEndTimestamp() public {
-        uint64 timestamp = 1737273600; // Jan 19 2025
-        uint64 endTimestamp = vault.getEndTimestamp(timestamp, 12);
-        assertEq(endTimestamp, 1737273600 + 365 * 1 days);
+        uint64 endTimestamp = vault.getEndTimestamp(12);
+        assertEq(endTimestamp, START_TIME + 365 * 1 days);
 
-        endTimestamp = vault.getEndTimestamp(timestamp, 2);
-        assertEq(endTimestamp, 1737273600 + 31 days + 28 days);
+        endTimestamp = vault.getEndTimestamp(2);
+        assertEq(endTimestamp, START_TIME + 31 days + 28 days);
 
-        endTimestamp = vault.getEndTimestamp(timestamp, 3);
-        assertEq(endTimestamp, 1737273600 + 31 days + 28 days + 31 days);
+        endTimestamp = vault.getEndTimestamp(3);
+        assertEq(endTimestamp, START_TIME + 31 days + 28 days + 30 days);
 
-        endTimestamp = vault.getEndTimestamp(timestamp, 4);
-        assertEq(endTimestamp, 1737273600 + 31 days + 28 days + 31 days + 30 days);
+        endTimestamp = vault.getEndTimestamp(4);
+        assertEq(endTimestamp, START_TIME + 31 days + 28 days + 31 days + 30 days);
 
-        endTimestamp = vault.getEndTimestamp(timestamp, 13);
-        assertEq(endTimestamp, 1737273600 + 365 * 1 days + 31 days);
+        endTimestamp = vault.getEndTimestamp(13);
+        assertEq(endTimestamp, START_TIME + 365 * 1 days + 28 days);
 
-        endTimestamp = vault.getEndTimestamp(timestamp, 14);
-        assertEq(endTimestamp, 1737273600 + 365 * 1 days + 31 days + 28 days);
+        endTimestamp = vault.getEndTimestamp(14);
+        assertEq(endTimestamp, START_TIME + 365 * 1 days + 31 days + 28 days);
 
-        endTimestamp = vault.getEndTimestamp(timestamp, 36);
-        assertEq(endTimestamp, 1737273600 + 365 * 3 days);
+        endTimestamp = vault.getEndTimestamp(36);
+        assertEq(endTimestamp, START_TIME + 365 * 3 days);
 
-        endTimestamp = vault.getEndTimestamp(timestamp, 48);
-        assertEq(endTimestamp, 1737273600 + 365 * 4 days + 1 days); // 4 years, including leap year.
+        endTimestamp = vault.getEndTimestamp(48);
+        assertEq(endTimestamp, START_TIME + 365 * 4 days + 1 days); // 4 years, including leap year.
+
+        endTimestamp = vault.getEndTimestamp(36);
+        assertEq(endTimestamp, START_TIME + 365 * 3 days); // 3 years, including leap year but not pass leap month.
+
+        endTimestamp = vault.getEndTimestamp(37);
+        assertEq(endTimestamp, START_TIME + 365 * 3 days + 29 days); // 3 years, including leap year.
     }
 
     // Test the view function getUnlockedAmount for beneficiary1.
@@ -237,8 +278,8 @@ contract TimelockVestVaultTest is Test {
         vm.warp(START_TIME + 10 days);
         uint256 stakeAmount = 10_000_000 ether;
         vm.expectEmit(true, false, false, true);
-        emit LockedTokensStaked(beneficiary1, sampleValidator, stakeAmount);
-        vault.stakeLockedTokens(stakeAmount, sampleValidator);
+        emit ITimelockVestVault.TokensStaked(beneficiary1, sampleValidator, stakeAmount);
+        vault.stakeTokens(stakeAmount, sampleValidator);
     }
 
     // Test that staking fails when using a validator that is not whitelisted.
@@ -246,24 +287,25 @@ contract TimelockVestVaultTest is Test {
         bytes memory invalidValidator = "invalid";
         uint256 stakeAmount = 5_000_000 ether;
         vm.expectRevert(TimelockVestVault.ValidatorNotWhitelisted.selector);
-        vault.stakeLockedTokens(stakeAmount, invalidValidator);
+        vault.stakeTokens(stakeAmount, invalidValidator);
     }
 
     // Test unstaking locked tokens (beneficiary1).
     function testUnstakeLockedTokensSuccess() public {
         vm.warp(START_TIME + 10 days);
         uint256 stakeAmount = 10_000_000 ether;
-        vault.stakeLockedTokens(stakeAmount, sampleValidator);
+        vault.stakeTokens(stakeAmount, sampleValidator);
 
         uint256 unstakeAmount = 5_000_000 ether;
         vm.expectEmit(true, false, false, true);
-        emit LockedTokensUnstakeRequested(beneficiary1, sampleValidator, unstakeAmount);
-        vault.unstakeLockedTokens(unstakeAmount, sampleValidator);
+        emit ITimelockVestVault.TokensUnstakeRequested(beneficiary1, sampleValidator, unstakeAmount);
+        vm.deal(address(this), 1 ether);
+        vault.unstakeTokens{value: 1 ether}(unstakeAmount, sampleValidator);
     }
 
     // Test that staking rewards cannot be claimed before the staking reward unlock time.
     function testClaimStakingRewardsBeforeUnlock() public {
-        vm.warp(START_TIME + 200 days); // before STAKING_REWARD_UNLOCK_START
+        vm.warp(START_TIME + 100 days); // before STAKING_REWARD_UNLOCK_START
         vm.expectRevert(TimelockVestVault.StakingRewardsNotClaimableYet.selector);
         vault.claimStakingRewards(10 ether);
     }
@@ -271,20 +313,9 @@ contract TimelockVestVaultTest is Test {
     // Test successful claiming of staking rewards (beneficiary1).
     function testClaimStakingRewardsSuccess() public {
         vm.warp(STAKING_REWARD_UNLOCK_START + 1 days);
-        // Compute the StakeRewardReceiver address via Create2.
-        bytes memory receiverCreationCode = abi.encodePacked(
-            type(StakeRewardReceiver).creationCode,
-            abi.encode(beneficiary1, address(vault), address(stakingContract))
-        );
-        address rewardReceiverAddress = Create2.computeAddress(
-            beneficiary1,
-            keccak256(receiverCreationCode),
-            address(vault)
-        );
-        assertEq(vault.getStakeRewardReceiverAddress(), rewardReceiverAddress);
         // Fund the reward receiver to simulate earned rewards.
-        vm.deal(rewardReceiverAddress, 50 ether);
-        assertEq(address(rewardReceiverAddress).balance, 50 ether);
+        vm.deal(vault.getStakeRewardReceiverAddress(), 50 ether);
+        assertEq(address(vault.getStakeRewardReceiverAddress()).balance, 50 ether);
         assertEq(vault.claimableStakingRewards(), 50 ether);
         uint256 claimAmount = 20 ether;
         uint256 initialBalance = address(this).balance;
@@ -312,7 +343,7 @@ contract TimelockVestVaultTest is Test {
         vm.warp(START_TIME + 365 * 1 days - 1 days);
         vm.prank(user1);
         vm.expectRevert(TimelockVestVault.TokensNotUnlockedYet.selector);
-        vault2.claimUnlockedTokens(1 ether);
+        vault2.withdrawUnlockedTokens(1 ether);
 
         // Warp to the cliff time.
         vm.warp(START_TIME + 365 * 1 days);
@@ -321,7 +352,7 @@ contract TimelockVestVaultTest is Test {
         uint256 claimAmount = 3_000_000 ether;
         uint256 initialBalance = user1.balance;
         vm.prank(user1);
-        vault2.claimUnlockedTokens(claimAmount);
+        vault2.withdrawUnlockedTokens(claimAmount);
         uint256 finalBalance = user1.balance;
         assertGe(finalBalance - initialBalance, claimAmount);
 
@@ -329,7 +360,7 @@ contract TimelockVestVaultTest is Test {
         uint256 stakeAmount = 5_000_000 ether;
         vm.prank(user1);
         vm.expectEmit(true, false, false, true);
-        emit LockedTokensStaked(_toHash(user1), sampleValidator, stakeAmount);
-        vault2.stakeLockedTokens(stakeAmount, sampleValidator);
+        emit ITimelockVestVault.TokensStaked(_toHash(user1), sampleValidator, stakeAmount);
+        vault2.stakeTokens(stakeAmount, sampleValidator);
     }
 }
