@@ -2,10 +2,10 @@
 pragma solidity ^0.8.26;
 interface ITimelockVestVault {
     /// @notice The struct that defines the unlocking schedule
-    /// start: The start time of the unlocking schedule
+    /// start: The start time of the unlocking schedule (timestamp in seconds)
     /// durationMonths: The duration of the unlocking schedule in months
-    /// end: The end time of the unlocking schedule
-    /// cliff: The cliff time of the unlocking schedule
+    /// end: The end time of the unlocking schedule (timestamp in seconds)
+    /// cliff: The cliff time of the unlocking schedule (timestamp in seconds)
     /// cliffMonths: The cliff duration of the unlocking schedule in months
     /// cliffPercentage: The percentage of tokens that can be claimed at the cliff. 10000 = 100%
     struct UnlockingSchedule {

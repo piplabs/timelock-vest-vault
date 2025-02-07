@@ -51,6 +51,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     error TokensNotUnlockedYet();
     error AmountMustBeGreaterThanZero();
     error NotEnoughUnlockedTokens(uint256 amount, uint256 claimable);
+    error NotEnoughWithdrawableTokens(uint256 amount, uint256 withdrawable);
     error ValidatorNotWhitelisted();
     error InsufficientBalanceInVault();
     error StakingRewardsNotClaimableYet();
@@ -112,7 +113,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         if (amount == 0) revert AmountMustBeGreaterThanZero();
 
         uint256 withdrawable = _withdrawableUnlockedTokens(beneficiary);
-        if (withdrawable < amount) revert NotEnoughUnlockedTokens(amount, withdrawable);
+        if (withdrawable < amount) revert NotEnoughWithdrawableTokens(amount, withdrawable);
 
         if (address(this).balance < amount) {
             revert NotEnoughUnlockedTokens(amount, address(this).balance);
