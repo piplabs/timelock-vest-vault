@@ -1,100 +1,115 @@
+# Time-Lock Vest Vault (TLV2)
 
-# Solidity Template 
+Time-Lock Vest Vault (TLV2) provides a secure and flexible solution for time-locked token vesting by deploying an individual vault contract for each beneficiary. This design enhances control over vesting schedules while supporting validator whitelisting to secure the process. Detailed insights into the architecture and implementation can be found in the [Design Document](https://storyprotocol.notion.site/Time-Lock-Vest-Vault-TLV2-Design-Document-177051299a54805681bbe3072bfbc088).
 
-Support both [Foundry](https://github.com/gakonst/foundry) test and [Hardhat](https://hardhat.org/).
+## Features
 
-# Getting Started
+- **Individual Vault Contracts:** Each beneficiary receives a dedicated vault contract to enforce customized vesting schedules.
+- **Validator Whitelisting:** A secure whitelist mechanism ensures that only approved validators participate in the system.
+- **Scripted Deployment:** Deployment is automated via Foundry scripts, minimizing manual intervention and potential errors.
+- **Environment-Driven Configuration:** Easily manage deployment settings and contract parameters using environment variables.
 
-## Requirements
+## Prerequisites
 
-Please install the following:
+- [Foundry](https://book.getfoundry.sh/) (forge) for compiling and deploying smart contracts.
+- A Unix-based terminal or compatible shell environment.
+- Basic familiarity with Ethereum development and contract deployment.
 
--   [Foundry / Foundryup](https://github.com/gakonst/foundry)
--   [Hardhat](https://hardhat.org/hardhat-runner/docs/getting-started#overview) 
+## Repository Setup
 
-And you probably already have `make` installed... but if not [try looking here.](https://askubuntu.com/questions/161104/how-do-i-install-make) and [here for MacOS](https://stackoverflow.com/questions/1469994/using-make-on-os-x)
+1. **Clone the Repository**
 
-## Quickstart
+   ```bash
+   git clone https://github.com/piplabs/timelock-vest-vault.git
+   cd timelock-vest-vault
+   ```
 
-```sh
-make # This installs the project's dependencies.
-make test
+2. **Install Dependencies** Follow Foundry's installation guidelines to set up forge and any other necessary tools.
+
+3. **Configure Environment Variables** Duplicate the provided environment template:
+
+   ```bash
+   cp .env.template .env
+   ```
+
+   Update the variables in your `.env` file as needed:
+
+    - `STORY_DEPLOYER_ADDRESS`: Your deployer address.
+    - `STORY_PRIVATEKEY`: Private key for signing transactions.
+    - `STORY_ALLOCATIONS_INPUT`: Path to the JSON file containing beneficiary allocations (e.g., `allocations/sample-allocations.json`).
+    - `STORY_ALLOCATIONS_OUTPUT`: Path for output data after processing allocations (e.g., `allocations/sample-allocations-output.json`).
+    - `STORY_VALIDATORS_INPUT`: Path to the JSON file with validator details (e.g., `allocations/sample-validators.json`).
+    - `STORY_RPC`: RPC endpoint (e.g., `https://aeneid.storyrpc.io`).
+    - `VERIFIER_URL`: URL for contract verification (e.g., `https://aeneid.storyscan.xyz/api`).
+
+## Deployment Instructions
+
+### 1. Deploy Validator Whitelist
+
+This step deploys the validator whitelist contract, ensuring only approved validators can interact with the system.
+
+Run the following command:
+
+```bash
+forge script script/Deploy.s.sol:DeployValidatorWhitelist \
+  --fork-url ${STORY_RPC} \
+  --broadcast \
+  --priority-gas-price 1 \
+  --slow \
+  --legacy \
+  --verify \
+  --verifier=blockscout \
+  --verifier-url=${VERIFIER_URL}
 ```
 
-## Testing
+- **Parameters Explained:**
+    - `--fork-url ${STORY_RPC}`: Connects to the specified RPC endpoint.
+    - `--broadcast`: Sends the transaction to the network.
+    - `--priority-gas-price 1`: Sets the priority gas price.
+    - `--slow` and `--legacy`: Adjust transaction parameters for network conditions.
+    - `--verify`: Enables contract verification.
+    - `--verifier=blockscout` and `--verifier-url=${VERIFIER_URL}`: Specifies the verification service.
 
-```
-make test
-```
+### 2. Deploy Vault Contracts
 
-or
+Deploy vault contracts for each beneficiary using the allocation data provided in the environment variables.
 
-```
-forge test
-```
+Execute the command:
 
-# Deploying to a network
-
-## Setup
-
-You'll need to add the following variables to a `.env` file:
-
--   `MAINNET_URL`
--   `MAINNET_PRIVATEKEY`
--   `GOERLI_URL`
--   `GOERLI_PRIVATEKEY`
--   `ETHERSCAN_API_KEY`
-
-## Deploying
-
-```
-make deploy-goerli
+```bash
+forge script script/Deploy.s.sol:DeployVaults \
+  --fork-url ${STORY_RPC} \
+  --broadcast \
+  --priority-gas-price 1 \
+  --slow \
+  --legacy \
+  --verify \
+  --verifier=blockscout \
+  --verifier-url=${VERIFIER_URL}
 ```
 
+- **Key Points:**
+    - Each beneficiary defined in the allocation JSON file receives its own vault contract.
+    - The deployment script reads the input data, processes allocations, and outputs results to the specified file.
+    - The configuration ensures that vesting schedules are correctly enforced as per the updated design.
 
-### Working with a local network
+## Testing and Interaction
 
-Foundry comes with local network [anvil](https://book.getfoundry.sh/anvil/index.html) baked in, and allows us to deploy to our local network for quick testing locally.
+- **Testing:** Run the built-in tests with:
+  ```bash
+  forge test
+  ```
+- **Interacting with Deployed Contracts:** Use Ethereum interaction libraries like Ethers.js or web3.js to interact with the deployed vault contracts. The individual contracts allow for detailed management of each beneficiary's vesting schedule.
 
-To start a local network run:
+## Additional Information
 
-```
-make anvil
-```
+For further technical details and rationale behind architectural decisions, consult the [TLV2 Design Document](https://storyprotocol.notion.site/Time-Lock-Vest-Vault-TLV2-Design-Document-177051299a54805681bbe3072bfbc088). This document provides insights into the design changes and benefits of having a vault contract per beneficiary.
 
-This will spin up a local blockchain with a determined private key, so you can use the same private key each time.
+## Contributing
 
-# Code Style
-We employed solhint to check code style.
-To check code style with solhint run:
-```
-make lint
-```
-To re-format code with prettier run:
-```
-make format
-```
+Contributions are welcome. Follow standard Git workflows and ensure that tests pass before opening a pull request.
 
-# Security
+## License
 
-We use slither, a popular security framework from [Trail of Bits](https://www.trailofbits.com/). To use slither, you'll first need to [install python](https://www.python.org/downloads/) and [install slither](https://github.com/crytic/slither#how-to-install).
-
-Then, you can run:
-
-```
-make slither
-```
-
-And get your slither output.
-
-
-## Resources
--   [Hardhat](https://hardhat.org/docs)
--   [Foundry Documentation](https://book.getfoundry.sh/)
--   [Yarn](https://yarnpkg.com/getting-started)
-
-### TODO
-
-[ ] Add support for sepolia chain 
-
+This project is released under the [MIT License](LICENSE).
 
