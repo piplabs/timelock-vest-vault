@@ -11,14 +11,16 @@ contract DeployVaults is Script {
     using stdJson for string;
 
     string private output;
-    address private constant VALIDATOR_WHITELIST = address(0xC8D451cd5BA38af9F72E628da0998D8AB4b206A6);
+    // address private constant VALIDATOR_WHITELIST = address(0xC8D451cd5BA38af9F72E628da0998D8AB4b206A6);
+    address private constant VALIDATOR_WHITELIST = address(0x85584192B1b01c37a5aFaFECcAcBb47EFbb44974);
     address private constant STAKING_CONTRACT = address(0xCCcCcC0000000000000000000000000000000001);
     // Unlock duration and cliff are now expressed in days.
     uint64 constant UNLOCK_DURATION_MONTHS = 48; // 4 years = 48 months
-    uint64 constant CLIFF_DURATION_MONTHS = 12; // 1 year = 12 months
+    uint64 constant CLIFF_DURATION_MONTHS = 30; // 1 year = 12 months
     uint64 constant CLIFF_UNLOCK_PERCENTAGE = 2500; // 25% of allocation
     // Staking reward unlock start timestamp (example)
-    uint64 constant STAKING_REWARD_UNLOCK_START = 1755673200;
+    // uint64 constant STAKING_REWARD_UNLOCK_START = 1755673200;
+    uint64 constant STAKING_REWARD_UNLOCK_START = 1738939512; //February 7, 2025 5:35:39 PM GMT+08:00
 
     struct Allocation {
         address beneficiary;

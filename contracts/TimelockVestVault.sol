@@ -22,7 +22,8 @@ interface IIPTokenStakingWithFee is IIPTokenStaking {
 ///  whithdrawn -> total amount of tokens withdrawn by the beneficiary
 contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     uint256 public constant HUNDRED_PERCENT = 10000; // 100%
-    uint64 private constant START_TIME = 1739404800; // 2025-02-13 00:00:00 UTC
+    // uint64 private constant START_TIME = 1739404800; // 2025-02-13 00:00:00 UTC
+    uint64 private constant START_TIME = 1738939512; // 2025-02-13 00:00:00 UTC
 
     // Reference to the deployed IPTokenStaking contract
     IIPTokenStakingWithFee private immutable stakingContract;
@@ -205,7 +206,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         return unlocking.start;
     }
 
-    /// @notice Returns the staking reward claimable start time
+    /// @notice Returns     
     /// @return timestamp
     function getStakingRewardClaimableStartTime() external view override returns (uint64 timestamp) {
         return stakingRewardStartTime;

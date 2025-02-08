@@ -29,7 +29,7 @@ Time-Lock Vest Vault (TLV2) provides a secure and flexible solution for time-loc
 3. **Configure Environment Variables** Duplicate the provided environment template:
 
    ```bash
-   cp .env.template .env
+   cp .env.example .env
    ```
 
    Update the variables in your `.env` file as needed:
