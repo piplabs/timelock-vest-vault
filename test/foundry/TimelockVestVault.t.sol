@@ -363,4 +363,23 @@ contract TimelockVestVaultTest is Test {
         emit ITimelockVestVault.TokensStaked(_toHash(user1), sampleValidator, stakeAmount);
         vault2.stakeTokens(stakeAmount, sampleValidator);
     }
+
+    // test user can withdraw all balance of vault after unlock time
+    function testWithdrawAllBalance() public {
+        vm.warp(START_TIME + 365 * 4 * 1 days + 1 days);
+        uint256 initialBalance = address(this).balance;
+        vault.withdrawUnlockedTokens(ALLOCATION);
+        uint256 finalBalance = address(this).balance;
+        assertEq(finalBalance - initialBalance, ALLOCATION);
+    }
+
+    // test user can withdraw all balance of vault after unlock time, even when the balance over the unlocked amount
+    function testWithdrawAllBalanceOverUnlocked() public {
+        vm.deal(address(vault), ALLOCATION + 1 ether);
+        vm.warp(START_TIME + 365 * 4 * 1 days + 1 days);
+        uint256 initialBalance = address(this).balance;
+        vault.withdrawUnlockedTokens(ALLOCATION + 1 ether);
+        uint256 finalBalance = address(this).balance;
+        assertEq(finalBalance - initialBalance, ALLOCATION + 1 ether);
+    }
 }
