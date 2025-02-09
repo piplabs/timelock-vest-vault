@@ -2,23 +2,23 @@
   "allocations": [
     {
       "beneficiary": "0x90B53D67250c45973E81a6F832d6c4496108ac39",
-      "lockedAmount": 1000
+      "lockedAmount": 3000
     },
     {
       "beneficiary": "0x5E23cB0627F0eBCC7134FF50Fa00451cF220389C",
-      "lockedAmount": 1000
+      "lockedAmount": 3000
     },
     {
       "beneficiary": "0xf398C12A45Bc409b6C652E25bb0a3e702492A4ab",
-      "lockedAmount": 1000
+      "lockedAmount": 3000
     },
     {
       "beneficiary": "0xfdf83b3b628c390fb83ceda11166f6c841380d25",
-      "lockedAmount": 1000
+      "lockedAmount": 3000
     },
     {
       "beneficiary": "0x9599f5fa8d1c2658e3fb575bb0e6612c26ec7d8e",
-      "lockedAmount": 1000
+      "lockedAmount": 3000
     }
   ],
   "name": "Investor Allocations"
