@@ -22,29 +22,29 @@ interface IIPTokenStakingWithFee is IIPTokenStaking {
 ///  whithdrawn -> total amount of tokens withdrawn by the beneficiary
 contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     uint256 public constant HUNDRED_PERCENT = 10000; // 100%
-    uint64 private constant START_TIME = 1739404800; // 2025-02-13 00:00:00 UTC
+    uint64 public constant START_TIME = 1739404800; // 2025-02-13 00:00:00 UTC
 
     // Reference to the deployed IPTokenStaking contract
-    IIPTokenStakingWithFee private immutable stakingContract;
+    IIPTokenStakingWithFee public immutable STAKING_CONTRACT;
 
     // Reference to the validator whitelist
-    IValidatorWhitelist private immutable whitelist;
+    IValidatorWhitelist public immutable VALIDATORS_WHITELIST;
 
-    UnlockingSchedule private unlocking;
+    UnlockingSchedule public unlocking;
 
-    uint64 private immutable stakingRewardStartTime;
+    uint64 public immutable STAKING_REWARD_CLAIMABLE_START_TIME;
 
     // Beneficiary address hashed
-    bytes32 private beneficiary;
+    bytes32 public beneficiary;
 
     // Allocation of the beneficiary
-    uint256 private allocation;
+    uint256 public allocation;
 
     // Total amount of tokens withdrawn by the beneficiary
-    uint256 private withdrawn;
+    uint256 public withdrawn;
 
     // address of the StakeRewardReceiver contract
-    IStakeRewardReceiver private stakingRewardReceiver;
+    IStakeRewardReceiver public stakingRewardReceiver;
 
     // Custom errors
     error NotBeneficiary();
@@ -84,8 +84,8 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         bytes32 _beneficiary,
         uint256 _allocation
     ) payable {
-        stakingContract = IIPTokenStakingWithFee(_stakingContract);
-        whitelist = IValidatorWhitelist(_validatorWhitelist);
+        STAKING_CONTRACT = IIPTokenStakingWithFee(_stakingContract);
+        VALIDATORS_WHITELIST = IValidatorWhitelist(_validatorWhitelist);
 
         unlocking = UnlockingSchedule({
             start: START_TIME,
@@ -96,12 +96,13 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
             cliffPercentage: _cliffPercentage
         });
 
-        stakingRewardStartTime = _stakingRewardStart;
+        STAKING_REWARD_CLAIMABLE_START_TIME = _stakingRewardStart;
 
         beneficiary = _beneficiary;
         allocation = _allocation;
-        stakingRewardReceiver = new StakeRewardReceiver(_beneficiary, address(this), address(stakingContract));
-        stakingContract.setRewardsAddress{ value: stakingContract.fee() }(address(stakingRewardReceiver));
+        stakingRewardReceiver = new StakeRewardReceiver(_beneficiary, address(this), address(STAKING_CONTRACT));
+        STAKING_CONTRACT.setRewardsAddress{ value: STAKING_CONTRACT.fee() }(address(stakingRewardReceiver));
+        emit TimelockVestVaultCreated(msg.sender, _beneficiary, _allocation, unlocking);
     }
 
     receive() external payable {}
@@ -130,12 +131,12 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     /// @param amount The amount of tokens to stake
     /// @param validator The address of the validator
     function stakeTokens(uint256 amount, bytes calldata validator) external override onlyBeneficiary nonReentrant {
-        if (!whitelist.isValidatorWhitelisted(validator)) revert ValidatorNotWhitelisted();
+        if (!VALIDATORS_WHITELIST.isValidatorWhitelisted(validator)) revert ValidatorNotWhitelisted();
         if (amount == 0) revert AmountMustBeGreaterThanZero();
         if (address(this).balance < amount) revert InsufficientBalanceInVault();
 
         emit TokensStaked(beneficiary, validator, amount);
-        stakingContract.stake{ value: amount }(validator, IIPTokenStaking.StakingPeriod.FLEXIBLE, "");
+        STAKING_CONTRACT.stake{ value: amount }(validator, IIPTokenStaking.StakingPeriod.FLEXIBLE, "");
     }
 
     /// @notice Unstake tokens
@@ -147,11 +148,11 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     ) external payable override onlyBeneficiary nonReentrant {
         if (amount == 0) revert AmountMustBeGreaterThanZero();
         // Retrieve the fee required by the staking contract.
-        uint256 fee = stakingContract.fee();
+        uint256 fee = STAKING_CONTRACT.fee();
         // Verify that the caller provided the exact fee.
         if (msg.value != fee) revert IncorrectFeeAmount();
         // delegation id is 0 for flexible staking
-        stakingContract.unstake{ value: fee }(validator, 0, amount, "");
+        STAKING_CONTRACT.unstake{ value: fee }(validator, 0, amount, "");
         // Record the unstake request
         emit TokensUnstakeRequested(beneficiary, validator, amount);
     }
@@ -159,7 +160,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     /// @notice Claims the staking rewards
     /// @param amount The amount of staking rewards to claim
     function claimStakingRewards(uint256 amount) external override onlyBeneficiary nonReentrant {
-        if (block.timestamp < stakingRewardStartTime) revert StakingRewardsNotClaimableYet();
+        if (block.timestamp < STAKING_REWARD_CLAIMABLE_START_TIME) revert StakingRewardsNotClaimableYet();
         // load balance into memory
         uint256 claimable = address(stakingRewardReceiver).balance;
         if (claimable < amount) revert NotEnoughStakingRewardToken(amount, claimable);
@@ -187,7 +188,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     /// After the first 6 months block rewards withheld, all block rewards are unlocked.
     /// @return The amount of claimable rewards
     function claimableStakingRewards() external view override returns (uint256) {
-        if (block.timestamp < stakingRewardStartTime) {
+        if (block.timestamp < STAKING_REWARD_CLAIMABLE_START_TIME) {
             return 0;
         }
         return address(stakingRewardReceiver).balance;
@@ -209,7 +210,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     /// @notice Returns the staking reward claimable start time
     /// @return timestamp
     function getStakingRewardClaimableStartTime() external view override returns (uint64 timestamp) {
-        return stakingRewardStartTime;
+        return STAKING_REWARD_CLAIMABLE_START_TIME;
     }
 
     /// @notice get StakeRewardReceiver address for the beneficiary

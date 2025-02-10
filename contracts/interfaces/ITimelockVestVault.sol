@@ -18,6 +18,17 @@ interface ITimelockVestVault {
     }
 
     // Events
+    /// @notice Emitted when a new TimelockVestVault is created
+    /// @param creator The address of the creator
+    /// @param beneficiary The address of the beneficiary
+    /// @param allocation The amount of tokens allocated
+    /// @param unlockingSchedule The unlocking schedule
+    event TimelockVestVaultCreated(
+        address indexed creator,
+        bytes32 indexed beneficiary,
+        uint256 allocation,
+        UnlockingSchedule unlockingSchedule
+    );
     /// @notice Emitted when unlocked tokens are withdrawn
     /// @param beneficiary The address of the beneficiary
     /// @param amount The amount of unlocked tokens withdrawn
