@@ -306,7 +306,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
 
     /// @dev define an array of month durations for 2025-2029, 2025-01-01 is month 1, 2026-01-01 is month 13
     /// @return MONTH_DURATIONS The array of month durations
-    function _getMinuteDurations() internal pure returns (uint8[48] memory) {
+    function _getMonthDurations() internal pure returns (uint8[48] memory) {
         // Start from 2025 Feb. 2025-02 is month 0, 2026-01 is month 11
         uint8[48] memory MONTH_DURATIONS = [
                     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
