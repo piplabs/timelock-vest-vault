@@ -15,7 +15,7 @@ contract DeployVaults is Script {
     address private constant STAKING_CONTRACT = address(0xCCcCcC0000000000000000000000000000000001);
     // Unlock duration and cliff are now expressed in days.
     uint64 constant UNLOCK_DURATION_MONTHS = 48; // 4 years = 48 months
-    uint64 constant CLIFF_DURATION_MONTHS = 12; // 1 year = 12 months
+    uint64 constant CLIFF_DURATION_MONTHS = 0; // 1 year = 12 months
     uint64 constant CLIFF_UNLOCK_PERCENTAGE = 2500; // 25% of allocation
     // Staking reward unlock start timestamp (example)
     uint64 constant STAKING_REWARD_UNLOCK_START = 1755673200;

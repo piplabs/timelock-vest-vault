@@ -23,6 +23,8 @@ interface IIPTokenStakingWithFee is IIPTokenStaking {
 contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     uint256 public constant HUNDRED_PERCENT = 10000; // 100%
     uint64 public constant START_TIME = 1739404800; // 2025-02-13 00:00:00 UTC
+//    uint64 public constant START_TIME = 1739437200; // 2025-02-13 09:00:00 UTC
+//    uint64 public constant START_TIME = 1739206800; // 2025-02-10 09:00:00 PST
 
     // Reference to the deployed IPTokenStaking contract
     IIPTokenStakingWithFee public immutable STAKING_CONTRACT;
@@ -229,7 +231,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         uint8[48] memory MONTH_DURATIONS = _getMonthDurations();
         endTimestamp = START_TIME;
         for (uint64 i = 0; i < durationMonths; i++) {
-            endTimestamp += MONTH_DURATIONS[i] * 1 days;
+            endTimestamp += uint64(MONTH_DURATIONS[i]) * 1 minutes;
         }
     }
 
@@ -240,7 +242,7 @@ contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
         elapsedMonths = 0;
         uint64 endTimestamp = START_TIME;
         for (uint64 i = 0; i < MONTH_DURATIONS.length; i++) {
-            endTimestamp += MONTH_DURATIONS[i] * 1 days;
+            endTimestamp += uint64(MONTH_DURATIONS[i]) * 1 minutes;
             if (endTimestamp <= timestamp) {
                 elapsedMonths += 1;
             } else {
