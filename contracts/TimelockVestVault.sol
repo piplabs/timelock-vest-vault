@@ -22,7 +22,7 @@ interface IIPTokenStakingWithFee is IIPTokenStaking {
 ///  whithdrawn -> total amount of tokens withdrawn by the beneficiary
 contract TimelockVestVault is ITimelockVestVault, ReentrancyGuardTransient {
     uint256 public constant HUNDRED_PERCENT = 10000; // 100%
-    uint64 public constant START_TIME = 1739404800; // 2025-02-13 00:00:00 UTC
+    uint64 public constant START_TIME = 1739984143; // 2025-02-13 00:00:00 UTC
 
     // Reference to the deployed IPTokenStaking contract
     IIPTokenStakingWithFee public immutable STAKING_CONTRACT;
