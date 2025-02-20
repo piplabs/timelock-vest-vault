@@ -6,6 +6,7 @@ import { Script, stdJson } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { TimelockVestVault } from "../contracts/TimelockVestVault.sol";
 import { ValidatorWhitelist } from "../contracts/ValidatorWhitelist.sol";
+import { TimelockVestVaultFactory } from "../contracts/TimelockVestVaultFactory.sol";
 
 contract DeployVaults is Script {
     using stdJson for string;
@@ -75,6 +76,42 @@ contract DeployVaults is Script {
     function _toHash(address addr) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(addr));
     }
+}
+
+contract DeployVaultFactory is Script {
+    using stdJson for string;
+
+    address private constant VALIDATOR_WHITELIST = address(0xC8D451cd5BA38af9F72E628da0998D8AB4b206A6);
+    address private constant STAKING_CONTRACT = address(0xCCcCcC0000000000000000000000000000000001);
+    // Unlock duration and cliff are now expressed in days.
+    uint64 constant UNLOCK_DURATION_MONTHS = 48; // 4 years = 48 months
+    uint64 constant CLIFF_DURATION_MONTHS = 12; // 1 year = 12 months
+    uint64 constant CLIFF_UNLOCK_PERCENTAGE = 2500; // 25% of allocation
+    // Staking reward unlock start timestamp (example)
+    uint64 constant STAKING_REWARD_UNLOCK_START = 1755673200;
+
+    uint256 private privateKey = vm.envUint("STORY_PRIVATEKEY");
+
+
+    function run() public {
+        vm.startBroadcast(privateKey);
+        _deploy();
+        vm.stopBroadcast();
+    }
+
+    function _deploy() internal {
+        TimelockVestVaultFactory factory = new TimelockVestVaultFactory(
+            STAKING_CONTRACT,
+            VALIDATOR_WHITELIST,
+            UNLOCK_DURATION_MONTHS,
+            CLIFF_DURATION_MONTHS,
+            CLIFF_UNLOCK_PERCENTAGE,
+            STAKING_REWARD_UNLOCK_START
+        );
+        console2.log("Vault deployed: ", address(factory));
+
+    }
+
 }
 
 contract DeployValidatorWhitelist is Script {
