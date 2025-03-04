@@ -24,12 +24,12 @@ Time-Lock Vest Vault (TLV2) provides a secure and flexible solution for time-loc
    cd timelock-vest-vault
    ```
 
-2. **Install Dependencies** Follow Foundry's installation guidelines to set up forge and any other necessary tools.
+2. **Install Dependencies** Follow Foundry's [installation guidelines](https://book.getfoundry.sh/getting-started/installation) to set up forge and any other necessary tools.
 
 3. **Configure Environment Variables** Duplicate the provided environment template:
 
    ```bash
-   cp .env.template .env
+   cp .env.example .env
    ```
 
    Update the variables in your `.env` file as needed:
