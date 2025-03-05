@@ -12,6 +12,13 @@ contract DeployVaults is Script {
     using stdJson for string;
 
     string internal output;
+    address internal VALIDATOR_WHITELIST = address(0xC33edB539FF6Ae84f7e394E556B952bb22164760);
+    address internal STAKING_CONTRACT = address(0xCCcCcC0000000000000000000000000000000001);
+    uint64 internal UNLOCK_DURATION_MONTHS = uint64(vm.envUint("STORY_UNLOCK_DURATION_MONTHS"));
+    uint64 internal CLIFF_DURATION_MONTHS = uint64(vm.envUint("STORY_CLIFF_DURATION_MONTHS"));
+    uint64 internal CLIFF_UNLOCK_PERCENTAGE = uint64(vm.envUint("STORY_CLIFF_UNLOCK_PERCENTAGE"));
+    // August 13, 2025 0:00:00
+    uint64 internal STAKING_REWARD_UNLOCK_START = 1755043200;
 
     struct Allocation {
         address beneficiary;
@@ -26,15 +33,6 @@ contract DeployVaults is Script {
     uint256 internal privateKey = vm.envUint("STORY_PRIVATEKEY");
     string internal allocationJson = vm.envString("STORY_ALLOCATIONS_INPUT");
     string internal allocationOutput = vm.envString("STORY_ALLOCATIONS_OUTPUT");
-
-    address internal VALIDATOR_WHITELIST = address(0xC33edB539FF6Ae84f7e394E556B952bb22164760);
-    address internal STAKING_CONTRACT = address(0xCCcCcC0000000000000000000000000000000001);
-    uint64 internal UNLOCK_DURATION_MONTHS = uint64(vm.envUint("STORY_UNLOCK_DURATION_MONTHS"));
-    uint64 internal CLIFF_DURATION_MONTHS = uint64(vm.envUint("STORY_CLIFF_DURATION_MONTHS"));
-    uint64 internal CLIFF_UNLOCK_PERCENTAGE = uint64(vm.envUint("STORY_CLIFF_UNLOCK_PERCENTAGE"));
-    // August 13, 2025 0:00:00
-    uint64 internal STAKING_REWARD_UNLOCK_START = 1755043200;
-
     Allocation[] public allocations;
 
     function run() public virtual {
