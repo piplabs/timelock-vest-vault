@@ -17,17 +17,17 @@ import "./TimelockVestVault.sol";
 ///      are set at deployment of the factory and passed to each vault on creation.
 contract TimelockVestVaultFactory {
     /// @notice The staking contract address used by each vault.
-    address public immutable STAKING_CONTRACT;
+    address private immutable STAKING_CONTRACT;
     /// @notice The validator whitelist contract address.
-    address public immutable VALIDATORS_WHITELIST;
+    address private immutable VALIDATORS_WHITELIST;
     /// @notice Total number of months over which tokens will unlock.
-    uint64 public immutable UNLOCK_DURATION_MONTHS;
+    uint64 private immutable UNLOCK_DURATION_MONTHS;
     /// @notice Number of months in the cliff period.
-    uint64 public immutable CLIFF_DURATION_MONTHS;
+    uint64 private immutable CLIFF_DURATION_MONTHS;
     /// @notice Percentage (expressed in basis points, e.g. 2500 = 25%) unlocked at the cliff.
-    uint64 public immutable CLIFF_PERCENTAGE;
+    uint64 private immutable CLIFF_PERCENTAGE;
     /// @notice Timestamp from which staking rewards become claimable.
-    uint64 public immutable STAKING_REWARD_START;
+    uint64 private immutable STAKING_REWARD_START;
 
     /// @notice Emitted when a new vault is deployed.
     /// @param creator The address that triggered the vault creation.
@@ -95,6 +95,9 @@ contract TimelockVestVaultFactory {
         emit VaultCreated(msg.sender, beneficiary, allocation, vaultAddress);
     }
 
+    /// @notice Returns the immutable configuration parameters of the factory.
+    /// @return config The configuration parameters of the factory.
+    /// @dev This function is view and does not modify the state.
     function getFactoryParameters() external view returns (VaultFactoryConfig memory) {
         return
             VaultFactoryConfig({
@@ -105,5 +108,20 @@ contract TimelockVestVaultFactory {
                 cliffPercentage: CLIFF_PERCENTAGE,
                 stakingRewardStart: STAKING_REWARD_START
             });
+    }
+
+    /// @notice Generates a hash of the beneficiary address.
+    /// @param beneficiaryAddress The address of the beneficiary.
+    /// @return beneficiaryHash The hash of the beneficiary address.
+    function toHash(address beneficiaryAddress) external pure returns (bytes32 beneficiaryHash) {
+        return keccak256(abi.encodePacked(beneficiaryAddress));
+    }
+
+    /// @notice Validates the beneficiary address against the provided hash.
+    /// @param beneficiaryAddress The address of the beneficiary.
+    /// @param beneficiaryHash The hash of the beneficiary address.
+    /// @return isValid True if the address matches the hash, false otherwise.
+    function validateHash(address beneficiaryAddress, bytes32 beneficiaryHash) external pure returns (bool isValid) {
+        return keccak256(abi.encodePacked(beneficiaryAddress)) == beneficiaryHash;
     }
 }
