@@ -93,6 +93,10 @@ forge script script/Deploy.s.sol:DeployVaults \
     - The deployment script reads the input data, processes allocations, and outputs results to the specified file.
     - The configuration ensures that vesting schedules are correctly enforced as per the updated design.
 
+#### 2.1 Deploy Vaults with Factory Contracts (on Aeneid Testnet)
+- **Investor's Vault Factory**: `0x244541Ef04AF9325dAf77Ae74bFBE45431466016`
+- **Service Provider Factory**: `0xA66a9182109F21Ae6b9F394b01a18723534C87D6`
+
 ## Testing and Interaction
 
 - **Testing:** Run the built-in tests with:
